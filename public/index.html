@@ -92,7 +92,7 @@ const L = {
   en: {
     games: 'Games', room: 'Room', scan: 'Scan to join', open: 'or open', wifi: 'Phones must be on the same Wi-Fi',
     scouts: 'Scouts', waiting: 'Waiting for scouts to join…', pick: 'Pick a game', last: 'Last game:',
-    keys: 'No phone? Play on this keyboard: press <kbd>Space</kbd> (WASD · 1-4) or <kbd>Enter</kbd> (arrows · 7-0).',
+    keys: 'No phone? Play on this keyboard: press <kbd>Space</kbd> (WASD · 1-4) or <kbd>Enter</kbd> (arrows · 7-0) to join, again to leave.',
     first: 'Scan the QR code or press Space first!', end: '✕ End game', sure: '✕ Click again to end', joinAt: 'Join:',
     in: 'You’re in! ⚜️', look: 'Look at the big screen 👀', won: 'You won! 🎉', played: 'Well played! Look at the big screen 👀', points: 'points',
     g: {
@@ -104,7 +104,7 @@ const L = {
   de: {
     games: 'Spiele', room: 'Raum', scan: 'Scannen und mitspielen', open: 'oder öffne', wifi: 'Handys müssen im selben WLAN sein',
     scouts: 'Pfadfinder', waiting: 'Warte auf Pfadfinder…', pick: 'Spiel wählen', last: 'Letztes Spiel:',
-    keys: 'Kein Handy? Spiel an dieser Tastatur: drück <kbd>Leertaste</kbd> (WASD · 1-4) oder <kbd>Enter</kbd> (Pfeiltasten · 7-0).',
+    keys: 'Kein Handy? Spiel an dieser Tastatur: drück <kbd>Leertaste</kbd> (WASD · 1-4) oder <kbd>Enter</kbd> (Pfeiltasten · 7-0) zum Mitmachen, nochmal zum Aussteigen.',
     first: 'Erst den QR-Code scannen oder die Leertaste drücken!', end: '✕ Spiel beenden', sure: '✕ Nochmal klicken zum Beenden', joinAt: 'Mitspielen:',
     in: 'Du bist dabei! ⚜️', look: 'Schau auf den großen Bildschirm 👀', won: 'Gewonnen! 🎉', played: 'Gut gespielt! Schau auf den großen Bildschirm 👀', points: 'Punkte',
     g: {
@@ -160,7 +160,7 @@ function connect() {
 function join(id, name, kb) {
   let p = players.get(id);
   const isNew = !p;
-  if (isNew) players.set(id, p = { id, kb, avatar: AVATARS[players.size % AVATARS.length], color: COLORS[players.size % COLORS.length] });
+  if (isNew) players.set(id, p = { id, kb, avatar: unused(AVATARS, 'avatar'), color: unused(COLORS, 'color') });
   p.name = String(name).slice(0, 14);
   if (kb) p.mk = new MorseKey(c => game?.input(p, { t: 'letter', c }), s => game?.input(p, { t: 'sym', s }));
   presence(p, true);
@@ -173,6 +173,9 @@ function presence(p, online) {
   p.online = online;
   game?.input(p, { t: 'presence' });
 }
+
+// First avatar/colour nobody has (keyboard players can leave, so counting players would hand out duplicates).
+const unused = (list, key) => list.find(v => ![...players.values()].some(p => p[key] === v)) ?? list[players.size % list.length];
 
 // Games call this to set a player's controller. Keyboard players just remember it.
 function send(p, ui) {
@@ -259,8 +262,11 @@ function key(e, down) {
   down ? held.add(e.code) : held.delete(e.code);
   for (const k of KEYBOARDS) {
     const p = players.get(k.id);
-    if (!p) { if (down && !game && e.code === k.join) join(k.id, k.name, k); continue; }
-    if (!game) continue;
+    if (!game) { // lobby: the join key toggles this keyboard player
+      if (down && e.code === k.join) p ? (players.delete(k.id), renderLobby()) : join(k.id, k.name, k);
+      continue;
+    }
+    if (!p) continue;
     const layout = p.ui?.layout;
     if (layout === 'stick' && [k.up, k.down, k.left, k.right].includes(e.code)) {
       let x = held.has(k.right) - held.has(k.left), y = held.has(k.down) - held.has(k.up);
