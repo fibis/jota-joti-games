@@ -12,6 +12,8 @@ export const ROOM_CODE = /^[A-Z]{4}$/;
 export const NAME_MAX = 14;
 /** WebSocket close code: the same player id connected again from another tab. */
 export const CLOSE_REPLACED = 4000;
+/** WebSocket close code: the big screen removed this player. The phone stops reconnecting. */
+export const CLOSE_KICKED = 4001;
 
 export type Layout = 'wait' | 'stick' | 'key' | 'choices' | 'keypad';
 
@@ -58,11 +60,8 @@ export type ServerToHost =
   | { t: 'leave'; id: string }
   | { t: 'msg'; id: string; d: unknown }; // straight from a phone: run it through parseInput()
 
-/** Host → server: `to` one player id, or every phone in the room when omitted. */
-export interface HostToServer {
-  to?: string;
-  d: PlayerView;
-}
+/** Host → server: a view `to` one player id (every phone in the room when omitted), or `kick` a player out. */
+export type HostToServer = { to?: string; d: PlayerView } | { kick: string };
 
 export type ServerToPlayer = PlayerView | { nohost: true };
 

@@ -7,7 +7,7 @@ import { unlockAudio } from '~/utils/morseAudio';
 definePageMeta({ validate: route => ROOM_CODE.test(String(route.params.code).toUpperCase()) }); // short join link: /ABCD
 
 const room = String(useRoute().params.code).toUpperCase();
-const { ui, status, lang, t, join, send, epoch } = usePlayerConnection(room);
+const { ui, status, lang, t, name, join, send, epoch } = usePlayerConnection(room);
 
 useHead({
   title: 'JOTA-JOTI Controller',
@@ -16,15 +16,16 @@ useHead({
   bodyAttrs: { style: 'overscroll-behavior: none' },
 });
 
-const name = ref<string>();
 // The host bumps `round` to force a fresh controller even when the layout stays the same; a reconnect does too (epoch).
 const controller = computed(() => `${ui.value.layout}:${ui.value.round}:${epoch.value}`);
 
 function onJoin(playerName: string) {
   unlockAudio(); // unlock sound while we still have the user's tap
-  name.value = playerName;
   join(playerName);
 }
+// A reload rejoins without a tap, and browsers only allow sound after one: unlock on the first touch.
+onMounted(() => window.addEventListener('pointerdown', unlockAudio, { once: true }));
+onUnmounted(() => window.removeEventListener('pointerdown', unlockAudio));
 </script>
 
 <template>

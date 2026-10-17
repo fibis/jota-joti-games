@@ -6,7 +6,7 @@ import { GAMES } from '~/games';
 import type { GameDefinition } from '~/games/types';
 
 const session = useHostSession();
-const { players, intro, run, room, lang, t, lastRanked, startGame, beginGame, endGame } = session;
+const { players, intro, run, room, lang, t, lastRanked, removePlayer, startGame, beginGame, endGame } = session;
 /** The game on stage: in its intro, or running. */
 const staged = computed(() => intro.value?.game ?? run.value?.game);
 useKeyboardPlayers(session);
@@ -43,7 +43,7 @@ function pick(game: GameDefinition) {
         <section class="right">
           <h2>{{ t.scouts }} {{ list.length ? `(${online})` : '' }}</h2>
           <div class="players">
-            <HostPlayerChip v-for="p in list" :key="p.id" :player="p" />
+            <HostPlayerChip v-for="p in list" :key="p.id" :player="p" :hint="t.remove" @remove="removePlayer(p)" />
             <span v-if="!list.length" class="muted">{{ t.waiting }}</span>
           </div>
           <div v-if="lastRanked" class="results">

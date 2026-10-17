@@ -1,6 +1,6 @@
 import type { Message, Peer } from 'crossws';
 import { describe, expect, it, vi } from 'vitest';
-import { CLOSE_REPLACED, ROOM_CODE } from '#shared/protocol';
+import { CLOSE_KICKED, CLOSE_REPLACED, ROOM_CODE } from '#shared/protocol';
 import { createRelay } from '../server/utils/relay';
 
 type Msg = Record<string, unknown>;
@@ -136,6 +136,19 @@ describe('relay', () => {
     h.say({ d: { layout: 'wait' } });
     expect(a.sent).toEqual([{ layout: 'key' }, { layout: 'wait' }]);
     expect(b.sent).toEqual([{ layout: 'wait' }]);
+  });
+
+  it('kicks a phone the host removed: closed with CLOSE_KICKED, the host hears it left', async () => {
+    const { host, player } = setup();
+    const { h, code } = await host();
+    const a = player(code, '1', 'Anna'), b = player(code, '2', 'Ben');
+    h.say({ kick: '1' });
+    expect(a.closedWith).toBe(CLOSE_KICKED);
+    expect(b.closedWith).toBeUndefined();
+    a.gone();
+    expect(h.sent.at(-1)).toEqual({ t: 'leave', id: '1' });
+    h.say({ kick: 'nobody' }); // unknown id: nothing happens
+    expect(b.closedWith).toBeUndefined();
   });
 
   it('ignores garbage', async () => {

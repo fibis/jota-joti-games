@@ -1,5 +1,6 @@
 // The phone's line to the big screen: one WebSocket that reconnects on its own, and the controller it was told to show.
 import {
+  CLOSE_KICKED,
   CLOSE_REPLACED,
   WS_PATH,
   detectLang,
@@ -27,6 +28,8 @@ const en = {
   check: 'Check the code on the big screen',
   otherTab: 'Opened in another tab',
   thisTab: 'Keep playing there, or reload this page',
+  removed: 'Removed by the big screen',
+  again: 'Enter your name to join again',
 };
 const de: typeof en = {
   hello: 'Mach mit!',
@@ -43,6 +46,8 @@ const de: typeof en = {
   check: 'Prüf den Code auf dem großen Bildschirm',
   otherTab: 'In einem anderen Tab geöffnet',
   thisTab: 'Spiel dort weiter oder lade diese Seite neu',
+  removed: 'Vom großen Bildschirm entfernt',
+  again: 'Gib deinen Namen ein, um wieder mitzumachen',
 };
 const TXT: Record<Lang, typeof en> = { en, de };
 
@@ -62,6 +67,22 @@ function tabId() {
   return fresh;
 }
 
+// The name this tab joined with, so a reload rejoins straight away (per tab, like the id). Storage may be blocked.
+const JOINED = 'jjJoined';
+function joinedAs() {
+  try {
+    return sessionStorage.getItem(JOINED) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+function rememberJoin(name: string | undefined) {
+  try {
+    if (name) sessionStorage.setItem(JOINED, name);
+    else sessionStorage.removeItem(JOINED);
+  } catch {}
+}
+
 export function usePlayerConnection(room: string) {
   const id = tabId();
   const ui = shallowRef<PhoneUi>({ layout: 'wait', text: TXT[detectLang()].hello });
@@ -74,7 +95,8 @@ export function usePlayerConnection(room: string) {
 
   let ws: WebSocket | undefined;
   let retry: ReturnType<typeof setTimeout> | undefined;
-  let name = '';
+  /** Who we play as; undefined until the join form (or a reload of a joined tab) sets it. */
+  const name = ref<string>();
 
   function show(next: PhoneUi) {
     const { lang, avatar, color } = ui.value;
@@ -84,7 +106,7 @@ export function usePlayerConnection(room: string) {
 
   function connect() {
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-    const socket = new WebSocket(`${proto}://${location.host}${WS_PATH}?role=player&room=${room}&id=${id}&name=${encodeURIComponent(name)}`);
+    const socket = new WebSocket(`${proto}://${location.host}${WS_PATH}?role=player&room=${room}&id=${id}&name=${encodeURIComponent(name.value ?? '')}`);
     ws = socket;
     socket.onopen = () => {
       epoch.value++;
@@ -98,6 +120,11 @@ export function usePlayerConnection(room: string) {
     };
     socket.onclose = (e) => {
       if (e.code === CLOSE_REPLACED) return show({ layout: 'wait', text: t.value.otherTab, sub: t.value.thisTab }); // same player id connected elsewhere
+      if (e.code === CLOSE_KICKED) { // removed on the big screen: back to the join form, no reconnect
+        name.value = undefined;
+        rememberJoin(undefined);
+        return show({ layout: 'wait', text: t.value.removed, sub: t.value.again });
+      }
       status.value = t.value.reconnecting;
       retry = setTimeout(connect, 1000 + Math.random() * 2000); // jitter: after a tunnel blip all phones would otherwise retry at once
     };
@@ -105,10 +132,15 @@ export function usePlayerConnection(room: string) {
 
   /** From the join form, after the player picked a name. */
   function join(playerName: string) {
-    name = playerName;
+    name.value = playerName;
+    rememberJoin(playerName);
     show({ layout: 'wait', text: t.value.connecting });
     connect();
   }
+
+  // This tab had joined before the reload: straight back in as the same player.
+  const before = joinedAs();
+  onMounted(() => before && join(before));
 
   /** Sends only while connected; returns whether it went out. */
   function send(msg: PlayerInput) {
@@ -124,5 +156,5 @@ export function usePlayerConnection(room: string) {
     ws.close();
   });
 
-  return { ui, status, lang, t, join, send, epoch };
+  return { ui, status, lang, t, name, join, send, epoch };
 }

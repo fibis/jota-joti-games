@@ -13,7 +13,7 @@ const en = {
   keys: { before: 'No phone? Play on this keyboard: press', space: 'Space', wasd: '(WASD · 1-4) or', enter: 'Enter', arrows: '(arrows · 7-0) to join, again to leave. In games: button & Morse key.' },
   first: 'Scan the QR code or press Space first!', end: '✕ End game', sure: '✕ Click again to end', joinAt: 'Join:',
   in: 'You’re in! ⚜️', look: 'Look at the big screen 👀', won: 'You won! 🎉', played: 'Well played! Look at the big screen 👀', points: 'points',
-  howTo: 'How to play', start: 'Start now ▶', startsIn: (s: number) => `Starts in ${s} s`,
+  remove: 'Click twice to remove', howTo: 'How to play', start: 'Start now ▶', startsIn: (s: number) => `Starts in ${s} s`,
   kbHelp: '⌨ Keyboard: WASD / arrows move · 1-4 / 7-0 answer · Space / Enter = button or Morse key',
 };
 const de: typeof en = {
@@ -22,7 +22,7 @@ const de: typeof en = {
   keys: { before: 'Kein Handy? Spiel an dieser Tastatur: drück', space: 'Leertaste', wasd: '(WASD · 1-4) oder', enter: 'Enter', arrows: '(Pfeiltasten · 7-0) zum Mitmachen, nochmal zum Aussteigen. Im Spiel: Knopf & Morsetaste.' },
   first: 'Erst den QR-Code scannen oder die Leertaste drücken!', end: '✕ Spiel beenden', sure: '✕ Nochmal klicken zum Beenden', joinAt: 'Mitspielen:',
   in: 'Du bist dabei! ⚜️', look: 'Schau auf den großen Bildschirm 👀', won: 'Gewonnen! 🎉', played: 'Gut gespielt! Schau auf den großen Bildschirm 👀', points: 'Punkte',
-  howTo: 'So geht’s', start: 'Jetzt starten ▶', startsIn: (s: number) => `Start in ${s} s`,
+  remove: 'Zweimal klicken zum Entfernen', howTo: 'So geht’s', start: 'Jetzt starten ▶', startsIn: (s: number) => `Start in ${s} s`,
   kbHelp: '⌨ Tastatur: WASD / Pfeile bewegen · 1-4 / 7-0 antworten · Leertaste / Enter = Knopf oder Morsetaste',
 };
 const TXT: Record<Lang, typeof en> = { en, de };
@@ -142,6 +142,12 @@ export function useHostSession() {
     toGame(p, { t: 'presence' });
   }
 
+  /** Removed on the big screen (lobby): a phone is disconnected and stops reconnecting; a keyboard player just goes. */
+  function removePlayer(p: Player) {
+    players.delete(p.id);
+    if (!p.keyboard && ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ kick: p.id } satisfies HostToServer));
+  }
+
   // First avatar/colour nobody has (keyboard players can leave, so counting players would hand out duplicates).
   // When all are taken, colours shift by one per lap so avatar + colour pairs stay unique for a big troop.
   function unused(list: readonly string[], key: 'avatar' | 'color') {
@@ -206,7 +212,7 @@ export function useHostSession() {
     for (const [p, s] of ranked) send(p, { layout: 'wait', text: `${medal(place(s))} ${s} ${t.value.points}`, sub: won(p, s) ? t.value.won : t.value.played });
   }
 
-  return { players, intro, run, room, lang, t, lastRanked, join, toGame, startGame, beginGame, endGame };
+  return { players, intro, run, room, lang, t, lastRanked, join, removePlayer, toGame, startGame, beginGame, endGame };
 }
 
 export type HostSession = ReturnType<typeof useHostSession>;

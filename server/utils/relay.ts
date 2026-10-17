@@ -4,7 +4,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Hooks, Peer } from 'crossws';
 import QRCode from 'qrcode';
-import { CLOSE_REPLACED, NAME_MAX, ROOM_CODE, type ServerToHost, type ServerToPlayer } from '#shared/protocol';
+import { CLOSE_KICKED, CLOSE_REPLACED, NAME_MAX, ROOM_CODE, type ServerToHost, type ServerToPlayer } from '#shared/protocol';
 import { joinUrl } from './network';
 
 interface Room {
@@ -92,7 +92,8 @@ export function createRelay(opts: { joinUrl: (code: string) => string }) {
         void sendRoom(peer, code, r.key);
         for (const [id, p] of r.players) toHost(peer, { t: 'join', id, name: p.name });
         conn.onMessage = text => {
-          const { to, d } = (parse(text) ?? {}) as { to?: unknown; d?: unknown };
+          const { to, d, kick } = (parse(text) ?? {}) as { to?: unknown; d?: unknown; kick?: unknown };
+          if (typeof kick === 'string') return r.players.get(kick)?.peer.close(CLOSE_KICKED); // its close sends the host 'leave'
           for (const [id, p] of r.players) if (to == null || to === id) send(p.peer, d);
         };
         conn.onClose = () => {
