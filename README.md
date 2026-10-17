@@ -31,13 +31,12 @@ because phones that look it up too early can get stuck on "not found" for minute
 
 ### Hosted on bunny.net Magic Containers
 
-Every push to `main` builds `ghcr.io/fibis/jota-joti-games:latest` (`.github/workflows/docker.yml`).
-Locally: `docker build -t jota-joti-games . && docker run -p 3000:3000 jota-joti-games`.
+Live at https://games.jota-joti.online. Every push to `main` builds `ghcr.io/fibis/jota-joti-games:<sha>` and
+rolls it out to the Magic Containers app `jota-joti-games` (`.github/workflows/docker.yml`; repo variable `APP_ID`,
+secret `BUNNYNET_API_KEY`). Locally: `docker build -t jota-joti-games . && docker run -p 3000:3000 jota-joti-games`.
 
-In Magic Containers: image `ghcr.io/fibis/jota-joti-games:latest` (make the GHCR package public or add the
-registry), container port `3000`, CDN endpoint, and env `PUBLIC_URL=https://<your endpoint hostname>` so the QR code
-points there. Run **one region with one instance**: rooms live in memory, so the big screen and the phones must all reach
-the same container.
+The app runs **one instance in one region (DE)** on purpose: rooms live in memory, so the big screen and the phones
+must all reach the same container. Env `PUBLIC_URL` sets the address in the QR code; WebSockets are on in the pull zone.
 
 **EN / DE** switch in the lobby (defaults to the browser language); phones follow the big screen.
 **✕ End game** in the bar above every game (click twice), or Esc. `npm test` runs the self-check.
