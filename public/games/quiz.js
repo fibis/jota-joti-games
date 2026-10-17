@@ -139,7 +139,8 @@ export function start(api) {
     board();
     tick = setTimeout(reveal, Q_S * 1000);
   }
-  const sendQ = p => api.send(p, { layout: 'choices', round: n, options, text: q, sub: `${t.q} ${n + 1} / ${qs.length}` });
+  // round: t0 is unique across games, so a reconnecting phone never keeps an old game's buttons.
+  const sendQ = p => api.send(p, { layout: 'choices', round: t0, options, text: q, sub: `${t.q} ${n + 1} / ${qs.length}` });
 
   function reveal() {
     open = false;
@@ -165,12 +166,14 @@ export function start(api) {
 
   return {
     input(p, d) {
-      if (!open || d.t !== 'pick' || picks.has(p) || !score.has(p)) return;
+      if (!open || !score.has(p)) return;
       const i = Number(d.i);
-      if (!(i >= 0 && i < 4)) return;
-      picks.set(p, { i, at: Date.now() });
-      $('.who').innerHTML = [...picks.keys()].map(p => `<span>${p.avatar}</span>`).join('') + ` <span class="muted">${t.answered}</span>`;
-      if ([...score.keys()].every(p => picks.has(p) || !p.online)) reveal();
+      if (d.t === 'pick' && !picks.has(p) && i >= 0 && i < 4) {
+        picks.set(p, { i, at: Date.now() });
+        $('.who').innerHTML = [...picks.keys()].map(p => `<span>${p.avatar}</span>`).join('') + ` <span class="muted">${t.answered}</span>`;
+      }
+      const live = [...score.keys()].filter(p => p.online); // a dropped phone isn't waited for; if all dropped, the timer runs
+      if (live.length && live.every(p => picks.has(p))) reveal();
     },
     join(p) { score.set(p, 0); if (open) sendQ(p); board(); },
     stop() { clearTimeout(tick); clearTimeout(next); open = false; n = qs.length; },

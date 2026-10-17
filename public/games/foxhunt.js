@@ -125,6 +125,7 @@ export function start(api) {
     input(p, d) {
       const s = scouts.get(p);
       if (s && d.t === 'stick') { s.vx = clamp1(d.x); s.vy = clamp1(d.y); }
+      if (s && d.t === 'presence') s.vx = s.vy = 0; // dropped or reconnected: stop until they touch the stick again
     },
     join(p) { score.set(p, 0); if (scene) { addScout(p); drawBoard(); } },
     stop() { clearTimeout(endTimer); game.destroy(true); },

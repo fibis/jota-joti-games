@@ -27,6 +27,8 @@ because phones that look it up too early can get stuck on "not found" for minute
   run a named tunnel on your own domain and start with `PUBLIC_URL=https://games.example.org npm start`.
 - Anyone with the link and room code can join. Keep the QR code in the room; don't show the lobby in a public JOTI stream.
 - Expect roughly 100 ms extra delay; Morse timing happens on the phone, so only Fox Hunt steering notices.
+- A quick tunnel allows 200 open connections, so roughly 190 phones max. Keep the laptop awake: the tunnel dies with it.
+
 ### Hosted on bunny.net Magic Containers
 
 Every push to `main` builds `ghcr.io/fibis/jota-joti-games:latest` (`.github/workflows/docker.yml`).
@@ -37,13 +39,14 @@ registry), container port `3000`, CDN endpoint, and env `PUBLIC_URL=https://<you
 points there. Run **one region with one instance**: rooms live in memory, so the big screen and the phones must all reach
 the same container.
 
-Esc (or the ✕ that appears when you move the mouse) goes back to the lobby. `npm test` runs the self-check.
+**EN / DE** switch in the lobby (defaults to the browser language); phones follow the big screen.
+**✕ End game** in the bar above every game (click twice), or Esc. `npm test` runs the self-check.
 
 | Game | Controller | |
 |---|---|---|
 | 🦊 Fox Hunt | joystick + radio receiver | ARDF: a hidden transmitter beeps “MO”; louder/faster/higher near the fox. First to 5. |
 | 📡 Morse Master | telegraph key | Key the word in Morse. Hints for the first 3 rounds. |
-| ⚜️ Scout Quiz | 4 buttons | Radio alphabet, Q-codes, knots, scouting history. Questions in `public/games/quiz.js`. |
+| ⚜️ Scout Quiz | 4 buttons + the question | Radio alphabet, Q-codes, knots, scouting history. Questions (en + de) in `public/games/quiz.js`. |
 
 ## How it works
 
@@ -55,10 +58,11 @@ show whatever controller the big screen asks for: `wait`, `stick` (+ optional `m
 Add `public/games/<name>.js` and a card in `GAMES` in `index.html`:
 
 ```js
-export function start(api) { // api: { stage, players, send(player, ui), esc, end(scores) }
+export function start(api) { // api: { stage, players, send(player, ui), esc, end(scores), lang: 'en' | 'de' }
   api.send(player, { layout: 'choices', round: 1, options: ['A', 'B', 'C', 'D'], text: 'Pick!' });
   return {
     input(player, msg) {},  // { t: 'stick', x, y } | { t: 'letter', c } | { t: 'sym', s } | { t: 'pick', i }
+                            // | { t: 'presence' } when a player drops or comes back (player.online)
     join(player) {},        // someone joined mid-game
     stop() {},              // clear timers
   };                        // call api.end([[player, points], ...]) when done

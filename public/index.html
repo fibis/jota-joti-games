@@ -134,11 +134,15 @@ let T = L[lang];
 const lobbyUi = () => ({ layout: 'wait', text: T.in, sub: T.look });
 
 function connect() {
-  ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/?role=host&room=${sessionStorage.jjRoom || ''}`);
+  ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/?role=host&room=${sessionStorage.jjRoom || ''}&key=${sessionStorage.jjKey || ''}`);
+  // After a server restart only phones that really come back get a 'join'; everyone else is gone.
+  // (No game notification here: the server replays live phones within milliseconds, so a blip must not end a round.)
+  ws.onopen = () => { for (const p of players.values()) if (!p.kb) p.online = false; renderLobby(); };
   ws.onmessage = e => {
     const m = JSON.parse(e.data);
     if (m.t === 'room') {
       sessionStorage.jjRoom = m.code;
+      sessionStorage.jjKey = m.key;
       joinText = m.url.replace(/^https?:\/\//, '');
       tunnel = m.url.startsWith('https:');
       $('code').textContent = m.code;
@@ -147,7 +151,7 @@ function connect() {
       renderStatic();
     }
     if (m.t === 'join') join(m.id, m.name);
-    if (m.t === 'leave' && players.has(m.id)) { players.get(m.id).online = false; renderLobby(); }
+    if (m.t === 'leave' && players.has(m.id)) { presence(players.get(m.id), false); renderLobby(); }
     if (m.t === 'msg' && players.has(m.id) && m.d && typeof m.d === 'object') game?.input(players.get(m.id), m.d);
   };
   ws.onclose = () => setTimeout(connect, 1000);
@@ -157,10 +161,17 @@ function join(id, name, kb) {
   let p = players.get(id);
   const isNew = !p;
   if (isNew) players.set(id, p = { id, kb, avatar: AVATARS[players.size % AVATARS.length], color: COLORS[players.size % COLORS.length] });
-  Object.assign(p, { name: String(name).slice(0, 14), online: true });
+  p.name = String(name).slice(0, 14);
   if (kb) p.mk = new MorseKey(c => game?.input(p, { t: 'letter', c }), s => game?.input(p, { t: 'sym', s }));
+  presence(p, true);
   if (isNew && game) game.join(p); else send(p, p.ui ?? lobbyUi()); // reconnecting phones get their last controller back
   renderLobby();
+}
+
+// Games hear about comings and goings: a dropped scout stops running, a round can end without them.
+function presence(p, online) {
+  p.online = online;
+  game?.input(p, { t: 'presence' });
 }
 
 // Games call this to set a player's controller. Keyboard players just remember it.

@@ -118,7 +118,8 @@ export function start(api) {
         sendKey(p, s.bad ? { buzz: 150 } : s.done ? { buzz: [80, 60, 80] } : {});
       }
       render();
-      if ([...st].every(([p, s]) => s.done || !p.online)) endRound();
+      const live = [...st].filter(([p]) => p.online); // a dropped phone isn't waited for; if all dropped, the timer runs
+      if (live.length && live.every(([, s]) => s.done)) endRound();
     },
     join(p) { score.set(p, 0); st.set(p, { typed: '', sym: '', done: false }); if (active) sendKey(p); render(); },
     stop() { clearInterval(tick); clearTimeout(next); active = false; round = PLAN.length; },

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { CODE, DECODE, DAH_MS, MorseKey } from './public/morse.js';
 import { QUESTIONS } from './public/games/quiz.js';
-import { TIERS } from './public/games/morse-master.js';
+import { WORDS } from './public/games/morse-master.js';
 
 // Morse table is a clean two-way mapping.
 for (const [c, m] of Object.entries(CODE)) assert.equal(DECODE[m], c);
@@ -16,8 +16,12 @@ press(50, DAH_MS + 1); // A
 press(...Array(8).fill(50)); // 8 dits: not a letter
 assert.deepEqual(out, ['S', 'O', 'A', '?']);
 
-// Quiz: 4 distinct answers each; Morse words only use keyable letters.
-for (const [, q, ...a] of QUESTIONS) assert.equal(new Set(a).size, 4, q);
-for (const w of TIERS.flat()) for (const c of w) assert.ok(CODE[c], w);
+// Both languages: 4 distinct answers per question, same question count, Morse words only use keyable letters.
+for (const lang of ['en', 'de']) {
+  for (const [, q, ...a] of QUESTIONS[lang]) assert.equal(new Set(a).size, 4, q);
+  for (const w of WORDS[lang].flat()) for (const c of w) assert.ok(CODE[c], w);
+  assert.equal(WORDS[lang].length, 4);
+}
+assert.equal(QUESTIONS.de.length, QUESTIONS.en.length);
 
-console.log(`ok — ${QUESTIONS.length} questions, ${TIERS.flat().length} words`);
+console.log(`ok — ${QUESTIONS.en.length} questions and ${WORDS.en.flat().length}/${WORDS.de.flat().length} words (en/de)`);

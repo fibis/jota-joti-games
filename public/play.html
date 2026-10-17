@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
@@ -41,17 +41,19 @@
   .choices button b { font-size: 2em; line-height: 1; }
   .choices button:disabled { opacity: .25; }
   .choices button.picked { opacity: 1; outline: 5px solid #fff; }
+  body[data-layout=choices] #text { font-size: 1.25em; } /* the quiz question itself */
+  body[data-layout=choices] main { justify-content: flex-start; }
 </style>
 </head>
 <body>
 <header><span class="av" id="av">⚜️</span><span id="name">JOTA-JOTI</span><span id="status"></span></header>
 <main>
-  <div id="text">Join the game!</div>
+  <div id="text"></div>
   <div id="sub"></div>
   <div id="ctl">
     <form id="join">
-      <input id="nameIn" maxlength="14" placeholder="Your name" autocomplete="off" required>
-      <button>Join 📻</button>
+      <input id="nameIn" maxlength="14" autocomplete="off" required>
+      <button id="joinBtn"></button>
     </form>
   </div>
 </main>
@@ -63,27 +65,44 @@ const room = location.pathname.slice(1).toUpperCase();
 const id = sessionStorage.jjId ??= String(Math.random()).slice(2); // per tab: survives reloads, two tabs = two players
 let ws, ui = {}, name;
 
+// Texts the phone shows on its own. Everything else comes from the big screen, in its language.
+const STR = {
+  en: { hello: 'Join the game!', name: 'Your name', join: 'Join 📻', connecting: 'Connecting…', in: 'You’re in!', look: 'Look at the big screen 👀',
+    reconnecting: 'reconnecting…', drag: 'drag anywhere here', signal: '📡 Signal', key: 'KEY', nohost: 'No big screen with code', check: 'Check the code on the big screen', otherTab: 'Opened in another tab', thisTab: 'Keep playing there, or reload this page' },
+  de: { hello: 'Mach mit!', name: 'Dein Name', join: 'Mitmachen 📻', connecting: 'Verbinde…', in: 'Du bist dabei!', look: 'Schau auf den großen Bildschirm 👀',
+    reconnecting: 'verbinde neu…', drag: 'irgendwo hier ziehen', signal: '📡 Signal', key: 'TASTE', nohost: 'Kein großer Bildschirm mit Code', check: 'Prüf den Code auf dem großen Bildschirm', otherTab: 'In einem anderen Tab geöffnet', thisTab: 'Spiel dort weiter oder lade diese Seite neu' },
+};
+const tr = k => (STR[ui.lang] ?? STR[navigator.language?.startsWith('de') ? 'de' : 'en'])[k];
+$('text').textContent = tr('hello');
+$('nameIn').placeholder = tr('name');
+$('joinBtn').textContent = tr('join');
+
 $('nameIn').value = localStorage.jjName || '';
 $('join').onsubmit = e => {
   e.preventDefault();
   name = localStorage.jjName = $('nameIn').value.trim().slice(0, 14) || 'Scout';
   audio().resume(); // unlock sound while we still have the user's tap
   $('name').textContent = name;
-  show({ layout: 'wait', text: 'Connecting…' });
+  show({ layout: 'wait', text: tr('connecting') });
   connect();
 };
 
 function connect() {
   ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/?role=player&room=${room}&id=${id}&name=${encodeURIComponent(name)}`);
-  ws.onopen = () => { $('status').textContent = ''; if (ui.layout === 'wait' && ui.text === 'Connecting…') show({ layout: 'wait', text: 'You’re in!', sub: 'Look at the big screen 👀' }); };
-  ws.onmessage = e => show(JSON.parse(e.data));
-  ws.onclose = () => { $('status').textContent = 'reconnecting…'; setTimeout(connect, 1000); };
+  ws.onopen = () => { $('status').textContent = ''; if (ui.layout === 'wait' && ui.text === tr('connecting')) show({ layout: 'wait', text: tr('in'), sub: tr('look') }); };
+  ws.onmessage = e => { const d = JSON.parse(e.data); show(d.nohost ? { layout: 'wait', text: `${tr('nohost')} ${room}`, sub: tr('check') } : d); };
+  ws.onclose = e => {
+    if (e.code === 4000) return show({ layout: 'wait', text: tr('otherTab'), sub: tr('thisTab') }); // same player id connected elsewhere
+    $('status').textContent = tr('reconnecting');
+    setTimeout(connect, 1000 + Math.random() * 2000); // jitter: after a tunnel blip all phones would otherwise retry at once
+  };
 }
-const out = d => ws?.readyState === 1 && ws.send(JSON.stringify(d));
+const out = d => ws?.readyState === 1 && (ws.send(JSON.stringify(d)), true);
 
 function show(next) {
   const relayout = next.layout !== ui.layout || next.round !== ui.round; // host bumps `round` to force a fresh controller
-  ui = next;
+  ui = { lang: ui.lang, ...next };
+  document.body.dataset.layout = ui.layout;
   if (ui.avatar) $('av').textContent = ui.avatar;
   if (ui.color) document.documentElement.style.setProperty('--me', ui.color);
   $('text').textContent = ui.text ?? '';
@@ -103,7 +122,7 @@ const layouts = {
   stick() {
     const pad = el('div', 'pad'), ring = el('div', 'ring'), knob = el('div', 'knob'), meter = el('div', 'meter');
     meterFill = meter.appendChild(el('div'));
-    pad.append(el('div', 'hint', 'drag anywhere here'), ring, knob);
+    pad.append(el('div', 'hint', tr('drag')), ring, knob);
     let o = null, last = 0;
     const move = e => {
       if (!o) return;
@@ -127,13 +146,13 @@ const layouts = {
     const area = el('div');
     Object.assign(area.style, { position: 'relative', flex: 1 });
     area.append(pad);
-    wrap.append(...('meter' in ui ? [el('div', '', '📡 Signal'), meter] : []), area);
+    wrap.append(...('meter' in ui ? [el('div', '', tr('signal')), meter] : []), area);
     return [wrap];
   },
 
   // Telegraph key: short press = dit, long press = dah.
   key() {
-    const key = el('div', 'key', 'KEY'), sym = el('div', 'sym'), log = el('div', 'log');
+    const key = el('div', 'key', tr('key')), sym = el('div', 'sym'), log = el('div', 'log');
     const mk = new MorseKey(
       c => { log.textContent = (log.textContent + c).slice(-12); out({ t: 'letter', c }); },
       s => { sym.textContent = s.replace(/\./g, '·').replace(/-/g, '−'); out({ t: 'sym', s }); });
@@ -149,7 +168,12 @@ const layouts = {
       const b = el('button');
       b.style.background = CHOICE[i].color;
       b.append(el('b', '', CHOICE[i].shape), el('span', '', txt));
-      b.onclick = () => { out({ t: 'pick', i }); navigator.vibrate?.(30); for (const x of box.children) x.disabled = true; b.classList.add('picked'); };
+      b.onclick = () => {
+        if (!out({ t: 'pick', i })) return; // reconnecting: don't lock the buttons on an answer that never left
+        navigator.vibrate?.(30);
+        for (const x of box.children) x.disabled = true;
+        b.classList.add('picked');
+      };
       box.append(b);
     });
     return [box];

@@ -10,6 +10,7 @@ import { WebSocketServer } from 'ws';
 import QRCode from 'qrcode';
 
 const PORT = process.env.PORT || 3000;
+const PUBLIC_URL = process.env.PUBLIC_URL?.replace(/\/$/, ''); // e.g. a named Cloudflare tunnel
 const ROOT = path.join(import.meta.dirname, 'public');
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml' };
 const PHASER = path.join(import.meta.dirname, 'node_modules/phaser/dist/phaser.min.js');
@@ -24,7 +25,8 @@ function lanIp() {
 }
 
 const server = http.createServer((req, res) => {
-  const p = new URL(req.url, 'http://x').pathname;
+  const p = URL.parse(req.url, 'http://x')?.pathname; // URL.parse, not new URL: "GET //" must not crash us
+  if (!p) return res.writeHead(400).end();
   const file = p === '/lib/phaser.js' ? PHASER
     : /^\/[A-Za-z]{4}$/.test(p) ? path.join(ROOT, 'play.html') // short join link: /ABCD
     : path.join(ROOT, path.normalize(p === '/' ? '/index.html' : p));
@@ -35,37 +37,41 @@ const server = http.createServer((req, res) => {
   });
 });
 
-const rooms = new Map(); // code -> { host: ws|null, players: Map<id, ws> }; dropped when empty
+const rooms = new Map(); // code -> { host: ws|null, key, players: Map<id, ws> }; dropped when empty
 const newCode = () => Array.from({ length: 4 }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ'[Math.random() * 24 | 0]).join('');
 const room = code => rooms.get(code) ?? rooms.set(code, { host: null, players: new Map() }).get(code);
 const prune = code => { const r = rooms.get(code); if (r && !r.host && !r.players.size) rooms.delete(code); };
-const send = (ws, msg) => ws?.readyState === 1 && ws.send(JSON.stringify(msg));
 const parse = m => { try { return JSON.parse(m); } catch { return null; } };
+// Never throws (stringify can blow the stack on hostile nesting) and drops messages
+// for peers that stopped reading instead of buffering them until we run out of memory.
+const send = (ws, msg) => { try { if (ws?.readyState === 1 && ws.bufferedAmount < 1e6) ws.send(JSON.stringify(msg)); } catch {} };
 
 // Where phones join: a tunnel/public URL if we have one, else this machine on the LAN.
-let publicUrl = process.env.PUBLIC_URL?.replace(/\/$/, '');
+let publicUrl = PUBLIC_URL;
 async function sendRoom(ws, code) {
   const url = `${publicUrl || `http://${lanIp()}:${PORT}`}/${code}`;
-  send(ws, { t: 'room', code, url, qr: await QRCode.toString(url, { type: 'svg', margin: 1 }) });
+  send(ws, { t: 'room', code, key: rooms.get(code)?.key, url, qr: await QRCode.toString(url, { type: 'svg', margin: 1 }) });
 }
 function setPublicUrl(url) {
   publicUrl = url;
   for (const [code, r] of rooms) if (r.host) sendRoom(r.host, code); // refresh QR codes already on screen
 }
 
-const wss = new WebSocketServer({ server, maxPayload: 64 * 1024 });
+const wss = new WebSocketServer({ server, maxPayload: 8 * 1024 });
 wss.on('connection', (ws, req) => {
   ws.on('error', () => {}); // bad frame / too big: ws closes that socket; without a listener it would crash the server
   ws.on('pong', () => ws.alive = true);
   ws.alive = true;
-  const q = new URL(req.url, 'http://x').searchParams;
+  const q = URL.parse(req.url, 'http://x')?.searchParams ?? new URLSearchParams();
   let code = (q.get('room') || '').toUpperCase();
 
   if (q.get('role') === 'host') {
-    // A reloading host reclaims its old code so phones reconnect on their own.
-    if (!/^[A-Z]{4}$/.test(code) || rooms.get(code)?.host) do code = newCode(); while (rooms.get(code)?.host);
+    // A reloading big screen reclaims its old code (proving it with the room key) so phones reconnect on their own.
+    const old = rooms.get(code);
+    if (!/^[A-Z]{4}$/.test(code) || old?.host || (old?.key && old.key !== q.get('key'))) do code = newCode(); while (rooms.has(code));
     const r = room(code);
     r.host = ws;
+    r.key ??= crypto.randomUUID();
     sendRoom(ws, code);
     for (const [id, p] of r.players) send(ws, { t: 'join', id, name: p.name });
     ws.on('message', m => {
@@ -76,13 +82,14 @@ wss.on('connection', (ws, req) => {
     return;
   }
 
-  const id = String(q.get('id') || '').slice(0, 40);
-  if (!/^[A-Z]{4}$/.test(code) || !id) return ws.close();
+  const id = q.get('id') || '';
+  if (!/^[A-Z]{4}$/.test(code) || !/^\d{1,40}$/.test(id)) return ws.close(); // phones use numeric ids; kb-* belong to the big screen
   const r = room(code);
   ws.name = String(q.get('name') || 'Scout').slice(0, 14);
-  r.players.get(id)?.terminate(); // same phone reconnecting
+  r.players.get(id)?.close(4000); // same id again: a reload (old socket is dead) or a duplicated tab (told to stop)
   r.players.set(id, ws);
-  send(r.host, { t: 'join', id, name: ws.name });
+  if (r.host) send(r.host, { t: 'join', id, name: ws.name });
+  else send(ws, { nohost: true });
   ws.on('message', m => { const d = parse(m); if (d) send(r.host, { t: 'msg', id, d }); });
   ws.on('close', () => {
     if (r.players.get(id) !== ws) return;
@@ -92,7 +99,7 @@ wss.on('connection', (ws, req) => {
   });
 });
 
-// Heartbeat: keeps idle sockets open through proxies (Cloudflare drops them after ~100 s)
+// Heartbeat: keeps idle sockets open through proxies (measured: Cloudflare drops idle ones after ~2 min)
 // and closes phones that vanished without saying goodbye.
 setInterval(() => {
   for (const ws of wss.clients) {
@@ -106,21 +113,22 @@ server.listen(PORT, () => console.log(`\n  📻 JOTA-JOTI Games\n  Big screen: h
 
 // A fresh quick-tunnel hostname needs a few seconds to exist in DNS. Phones that look it up too early
 // get "not found", and some resolvers cache that for minutes. So only show it once trycloudflare.com's
-// own nameservers answer (they never cache). Gives up after 30 s and shows it anyway.
+// own nameservers answer (they never cache). Gives up after ~30 s (e.g. outside DNS blocked) and shows it anyway.
 async function dnsReady(host) {
+  const end = Date.now() + 30_000;
   try {
-    const auth = new dns.Resolver();
+    const auth = new dns.Resolver({ timeout: 1000, tries: 1 });
     auth.setServers(await Promise.all((await dns.resolveNs('trycloudflare.com')).map(async ns => (await dns.lookup(ns, { family: 4 })).address)));
-    for (let i = 0; i < 30; i++) {
+    while (Date.now() < end) {
       try { return await auth.resolve4(host); } catch { await new Promise(r => setTimeout(r, 1000)); }
     }
-  } catch {} // offline DNS etc.: don't block
+  } catch {} // no DNS at all: don't block
 }
 
 // `npm run tunnel`: TryCloudflare quick tunnel, so phones can join over https from any network.
 if (process.argv.includes('--tunnel')) {
   console.log('  🌍 Starting Cloudflare quick tunnel…');
-  const cf = spawn('cloudflared', ['tunnel', '--url', `http://localhost:${PORT}`], { stdio: ['ignore', 'pipe', 'pipe'] });
+  const cf = spawn('cloudflared', ['tunnel', '--no-autoupdate', '--url', `http://localhost:${PORT}`], { stdio: ['ignore', 'pipe', 'pipe'] });
   let seen;
   const watch = async chunk => {
     const url = String(chunk).match(/https:\/\/(?!api\.)[-a-z0-9]+\.trycloudflare\.com/)?.[0];
@@ -134,7 +142,7 @@ if (process.argv.includes('--tunnel')) {
   cf.stdout.on('data', watch);
   cf.stderr.on('data', watch);
   cf.on('error', () => console.log('  ❌ cloudflared not found. Install it (Arch: sudo pacman -S cloudflared), see https://try.cloudflare.com'));
-  cf.on('exit', code => { seen = null; if (code !== null) console.log(`  ⚠️  cloudflared stopped (${code}); phones need the local Wi-Fi again`); setPublicUrl(process.env.PUBLIC_URL); });
+  cf.on('exit', code => { seen = null; if (code !== null) console.log(`  ⚠️  cloudflared stopped (${code}); phones need the local Wi-Fi again`); setPublicUrl(PUBLIC_URL); });
   process.on('exit', () => cf.kill());
   for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => process.exit());
 }
