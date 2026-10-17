@@ -13,7 +13,7 @@ export const NAME_MAX = 14;
 /** WebSocket close code: the same player id connected again from another tab. */
 export const CLOSE_REPLACED = 4000;
 
-export type Layout = 'wait' | 'stick' | 'key' | 'choices';
+export type Layout = 'wait' | 'stick' | 'key' | 'choices' | 'keypad';
 
 /** A phone's controller, as a game describes it. */
 export interface ControllerUi {
@@ -24,10 +24,16 @@ export interface ControllerUi {
   round?: number;
   /** `stick` only: fox signal 0..1. Shows the meter and plays the beacon. */
   meter?: number;
+  /** `stick` only: label of an action button next to the joystick (sends `button` input). */
+  button?: string;
+  /** `keypad` only: digits in the code; the phone sends it once that many are typed. */
+  digits?: number;
   /** `choices` only: the four answers. */
   options?: string[];
   /** navigator.vibrate() pattern. */
   buzz?: number | number[];
+  /** Overrides the phone's accent colour (e.g. the team colour); default: the player's own colour. */
+  color?: string;
 }
 
 /** What a phone receives: its controller, plus who it is and which language the big screen speaks. */
@@ -42,7 +48,9 @@ export type PlayerInput =
   | { t: 'stick'; x: number; y: number }
   | { t: 'letter'; c: string }
   | { t: 'sym'; s: string }
-  | { t: 'pick'; i: number };
+  | { t: 'pick'; i: number }
+  | { t: 'button'; down: boolean }
+  | { t: 'code'; code: string };
 
 export type ServerToHost =
   | { t: 'room'; code: string; key: string; url: string; qr: string }
@@ -76,6 +84,12 @@ export function parseInput(d: unknown): PlayerInput | null {
     case 'pick': {
       const i = Number(m.i);
       return Number.isInteger(i) && i >= 0 && i < 4 ? { t: 'pick', i } : null;
+    }
+    case 'button':
+      return { t: 'button', down: m.down === true };
+    case 'code': {
+      const code = String(m.code ?? '').replace(/\D/g, '').slice(0, 8);
+      return code ? { t: 'code', code } : null;
     }
   }
   return null;

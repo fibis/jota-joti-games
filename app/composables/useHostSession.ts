@@ -1,6 +1,7 @@
 // The big screen's state: who plays, which game runs, the room, and the socket to the relay.
 // The host runs every game; the server only passes messages between this page and the phones.
 import { detectLang, isLang, NAME_MAX, parseInput, WS_PATH } from '#shared/protocol';
+import type { Component } from 'vue';
 import type { ControllerUi, HostToServer, Lang, ServerToHost } from '#shared/protocol';
 import type { GameContext, GameDefinition, GameInput, GameRun, Player, Score } from '~/games/types';
 import { unlockAudio } from '~/utils/morseAudio';
@@ -9,22 +10,26 @@ const en = {
   games: 'Games', room: 'Room', scan: 'Scan to join', open: 'or open', wifi: 'Phones must be on the same Wi-Fi',
   scouts: 'Scouts', waiting: 'Waiting for scouts to join…', pick: 'Pick a game', last: 'Last game:',
   // Rendered as: before <kbd>space</kbd> wasd <kbd>enter</kbd> arrows
-  keys: { before: 'No phone? Play on this keyboard: press', space: 'Space', wasd: '(WASD · 1-4) or', enter: 'Enter', arrows: '(arrows · 7-0) to join, again to leave.' },
+  keys: { before: 'No phone? Play on this keyboard: press', space: 'Space', wasd: '(WASD · 1-4) or', enter: 'Enter', arrows: '(arrows · 7-0) to join, again to leave. In games: button & Morse key.' },
   first: 'Scan the QR code or press Space first!', end: '✕ End game', sure: '✕ Click again to end', joinAt: 'Join:',
   in: 'You’re in! ⚜️', look: 'Look at the big screen 👀', won: 'You won! 🎉', played: 'Well played! Look at the big screen 👀', points: 'points',
+  howTo: 'How to play', start: 'Start now ▶', startsIn: (s: number) => `Starts in ${s} s`,
+  kbHelp: '⌨ Keyboard: WASD / arrows move · 1-4 / 7-0 answer · Space / Enter = button or Morse key',
 };
 const de: typeof en = {
   games: 'Spiele', room: 'Raum', scan: 'Scannen und mitspielen', open: 'oder öffne', wifi: 'Handys müssen im selben WLAN sein',
   scouts: 'Pfadfinder', waiting: 'Warte auf Pfadfinder…', pick: 'Spiel wählen', last: 'Letztes Spiel:',
-  keys: { before: 'Kein Handy? Spiel an dieser Tastatur: drück', space: 'Leertaste', wasd: '(WASD · 1-4) oder', enter: 'Enter', arrows: '(Pfeiltasten · 7-0) zum Mitmachen, nochmal zum Aussteigen.' },
+  keys: { before: 'Kein Handy? Spiel an dieser Tastatur: drück', space: 'Leertaste', wasd: '(WASD · 1-4) oder', enter: 'Enter', arrows: '(Pfeiltasten · 7-0) zum Mitmachen, nochmal zum Aussteigen. Im Spiel: Knopf & Morsetaste.' },
   first: 'Erst den QR-Code scannen oder die Leertaste drücken!', end: '✕ Spiel beenden', sure: '✕ Nochmal klicken zum Beenden', joinAt: 'Mitspielen:',
   in: 'Du bist dabei! ⚜️', look: 'Schau auf den großen Bildschirm 👀', won: 'Gewonnen! 🎉', played: 'Gut gespielt! Schau auf den großen Bildschirm 👀', points: 'Punkte',
+  howTo: 'So geht’s', start: 'Jetzt starten ▶', startsIn: (s: number) => `Start in ${s} s`,
+  kbHelp: '⌨ Tastatur: WASD / Pfeile bewegen · 1-4 / 7-0 antworten · Leertaste / Enter = Knopf oder Morsetaste',
 };
 const TXT: Record<Lang, typeof en> = { en, de };
 export type HostText = typeof en;
 
-// Patrol animals as avatars (🦊 is taken by the fox).
-const AVATARS = ['🐻', '🦉', '🐺', '🦌', '🐿️', '🦔', '🐸', '🦅', '🦡', '🐗', '🦫', '🐝', '🐢', '🦆', '🐞', '🐧'];
+// Animal avatars (🦊 is the fox; 🐺 🦅 🦌 🦉 are the team badges in games/kit/teams.ts).
+const AVATARS = ['🐻', '🐿️', '🦔', '🐸', '🦡', '🐗', '🦫', '🐝', '🐢', '🦆', '🐞', '🐧', '🐰', '🐼', '🐨', '🦁', '🐯', '🐮', '🐷', '🐴'];
 const COLORS = ['#ff9f1c', '#2ec4b6', '#ff5a5f', '#b388ff', '#4cc9f0', '#f9c74f', '#90be6d', '#f15bb5', '#fefae0', '#ff7b39', '#06d6a0', '#5e9bff'];
 
 export const medal = (i: number) => ['🥇', '🥈', '🥉'][i] ?? `${i + 1}.`;
@@ -53,12 +58,21 @@ export function useHostSession() {
   // ctx.players): they key Maps by player, and a reactive Map stores new keys raw, so handing them
   // proxies would split one scout into two keys.
   const players: Map<string, Player> = reactive(new Map());
+  // Clicking a card first shows the game's intro (rules on the big screen and the phones); the run, and with it
+  // the game component, only starts after it. So scouts who join during the intro are in the game.
+  const intro = shallowRef<{ game: GameDefinition; component: Component } | null>(null);
   const run = shallowRef<GameRun | null>(null);
   const room = ref({ code: '', url: '', tunnel: false, qr: '' }); // url: the join link without scheme
   const lastRanked = shallowRef<Score[] | null>(null);
   const lang = ref<Lang>(savedLang() ?? detectLang());
   const t = computed(() => TXT[lang.value]);
   const lobbyUi = (): ControllerUi => ({ layout: 'wait', text: t.value.in, sub: t.value.look });
+  const introUi = (g: GameDefinition): ControllerUi => {
+    const { title, howTo } = g.info[lang.value];
+    return { layout: 'wait', text: `${g.emoji} ${title}`, sub: howTo.map(line => `• ${line}`).join('\n') };
+  };
+  /** What a phone shows while no game runs: the intro's rules, or the lobby. */
+  const idleUi = () => (intro.value ? introUi(intro.value.game) : lobbyUi());
   let runs = 0;
 
   let ws: WebSocket | undefined;
@@ -116,7 +130,7 @@ export function useHostSession() {
     p.name = name.slice(0, NAME_MAX);
     presence(p, true);
     if (!known && run.value) run.value.handlers.join?.(toRaw(p));
-    else send(p, p.ui ?? lobbyUi()); // reconnecting phones get their last controller back
+    else send(p, p.ui ?? idleUi()); // reconnecting phones get their last controller back
     return p;
   }
 
@@ -129,15 +143,17 @@ export function useHostSession() {
   }
 
   // First avatar/colour nobody has (keyboard players can leave, so counting players would hand out duplicates).
+  // When all are taken, colours shift by one per lap so avatar + colour pairs stay unique for a big troop.
   function unused(list: readonly string[], key: 'avatar' | 'color') {
-    return list.find(v => ![...players.values()].some(p => p[key] === v)) ?? list[players.size % list.length]!;
+    const lap = key === 'color' ? Math.floor(players.size / list.length) : 0;
+    return list.find(v => ![...players.values()].some(p => p[key] === v)) ?? list[(players.size + lap) % list.length]!;
   }
 
   // Games call this to set a player's controller. Keyboard players just remember it.
   function send(p: Player, ui: ControllerUi) {
     p.ui = ui;
     if (!p.keyboard && ws?.readyState === WebSocket.OPEN) {
-      const msg: HostToServer = { to: p.id, d: { ...ui, avatar: p.avatar, color: p.color, lang: lang.value } };
+      const msg: HostToServer = { to: p.id, d: { ...ui, avatar: p.avatar, color: ui.color ?? p.color, lang: lang.value } };
       ws.send(JSON.stringify(msg));
     }
   }
@@ -145,7 +161,7 @@ export function useHostSession() {
   // Phones follow the big screen's language (the switch only shows in the lobby).
   watch(lang, l => {
     save(() => localStorage, 'jjLang', l);
-    if (!run.value) for (const p of players.values()) send(p, lobbyUi());
+    if (!run.value) for (const p of players.values()) send(p, idleUi());
   });
 
   async function startGame(game: GameDefinition) {
@@ -156,28 +172,41 @@ export function useHostSession() {
     const mod = await game.load().catch(() => null);
     if (!mod) return location.reload();
     if (id !== runs) return; // clicked another card while this one loaded: the last click wins
+    intro.value = { game, component: markRaw(mod.default) };
+    for (const p of players.values()) send(p, introUi(game));
+  }
+
+  /** The intro is over: the game starts with everyone who is in the room now. */
+  function beginGame() {
+    const i = intro.value;
+    if (!i) return;
+    intro.value = null;
+    const id = runs;
     const ctx: GameContext = {
       lang: lang.value,
       players: [...players.values()].map(p => toRaw(p)),
       send,
-      end: scores => {
-        if (run.value?.id === id) endGame(scores); // a late timer of a finished run must not end the next one
+      end: (scores, winners) => {
+        if (run.value?.id === id) endGame(scores, winners); // a late timer of a finished run must not end the next one
       },
     };
-    run.value = { id, game, component: markRaw(mod.default), ctx, handlers: {} };
+    run.value = { id, game: i.game, component: i.component, ctx, handlers: {} };
   }
 
   // scores: [[player, points], ...] or nothing when aborted. Clearing the run unmounts the game.
-  function endGame(scores?: Score[]) {
+  function endGame(scores?: Score[], winners?: readonly Player[]) {
+    intro.value = null;
     run.value = null;
     for (const p of players.values()) send(p, lobbyUi());
     if (!scores) return;
     const ranked = [...scores].sort((a, b) => b[1] - a[1]);
     lastRanked.value = ranked;
-    ranked.forEach(([p, s], i) => send(p, { layout: 'wait', text: `${medal(i)} ${s} ${t.value.points}`, sub: i === 0 ? t.value.won : t.value.played }));
+    const place = (s: number) => ranked.findIndex(r => r[1] === s); // equal points, equal medal
+    const won = (p: Player, s: number) => (winners ? winners.includes(p) : place(s) === 0);
+    for (const [p, s] of ranked) send(p, { layout: 'wait', text: `${medal(place(s))} ${s} ${t.value.points}`, sub: won(p, s) ? t.value.won : t.value.played });
   }
 
-  return { players, run, room, lang, t, lastRanked, join, toGame, startGame, endGame };
+  return { players, intro, run, room, lang, t, lastRanked, join, toGame, startGame, beginGame, endGame };
 }
 
 export type HostSession = ReturnType<typeof useHostSession>;

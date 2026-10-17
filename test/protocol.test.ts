@@ -27,6 +27,19 @@ describe('parseInput', () => {
     for (const i of [-1, 4, 1.5, NaN, 'x', undefined]) expect(parseInput({ t: 'pick', i })).toBeNull();
   });
 
+  it('presses the button only on a real true', () => {
+    expect(parseInput({ t: 'button', down: true })).toEqual({ t: 'button', down: true });
+    for (const down of [false, 'true', 1, null, undefined]) expect(parseInput({ t: 'button', down })).toEqual({ t: 'button', down: false });
+  });
+
+  it('keeps only the digits of a code, at most 8', () => {
+    expect(parseInput({ t: 'code', code: '007' })).toEqual({ t: 'code', code: '007' });
+    expect(parseInput({ t: 'code', code: ' 4-2<b>' })).toEqual({ t: 'code', code: '42' });
+    expect(parseInput({ t: 'code', code: 1234 })).toEqual({ t: 'code', code: '1234' });
+    expect(parseInput({ t: 'code', code: '1234567890' })).toEqual({ t: 'code', code: '12345678' });
+    for (const code of ['', 'abc', null, undefined]) expect(parseInput({ t: 'code', code })).toBeNull();
+  });
+
   it('rejects unknown messages and garbage', () => {
     for (const d of [null, undefined, 42, 'stick', [], {}, { t: 'presence' }, { t: 'hack' }]) expect(parseInput(d)).toBeNull();
   });

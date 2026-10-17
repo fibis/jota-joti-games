@@ -53,20 +53,27 @@ must all reach the same container. Env `PUBLIC_URL` sets the address in the QR c
 | 🦊 Fox Hunt | joystick + radio receiver | ARDF: a hidden transmitter beeps “MO”; louder/faster/higher near the fox. First to 5. |
 | 📡 Morse Master | telegraph key | Key the word in Morse. Hints for the first 3 rounds. Words (en + de) in `app/games/morse-master/words.ts`. |
 | ⚜️ Scout Quiz | 4 buttons + the question | Radio alphabet, Q-codes, knots, scouting history. Questions (en + de) in `app/games/quiz/questions.ts`. |
+| 🔤 Call Sign Speller | 4 buttons | Spell a station's call sign in the radio alphabet, character by character. Longer call signs each round. |
+| 🔦 Signal Lamp | 4 buttons | Read a word flashed by the lamp in Morse. Sound in the first rounds, then light only, faster each round. |
+| 🛰️ ISS Pass | joystick + radio receiver | Turn your antenna to track the ISS (and from pass 3 the AO-91 cubesat). Hold the signal to log a QSO. |
+| 🪵 Pioneering Tower | joystick + button | Two teams take turns dropping lashed poles and frames (Matter physics). Tallest tower wins. |
+| 🤝 Find Your QSO Partner | number pad | Walk around the room: find the scout with your partner's call sign, swap codes, log the QSO. Phones only. |
+| 🚩 Capture the Flag | joystick + dash button | Two teams, two flags, two jails. Tag intruders, free your team mates, carry the enemy flag home. First to 3. |
 
 ## How it works
 
 The Nitro server (`server/routes/ws.ts` + `server/utils/relay.ts`) only relays messages between the big screen and
 the phones of a room. The big screen (`app/pages/index.vue`) runs the games; phones (`app/pages/[code].vue`, the short
-join link `/ABCD`) show whatever controller the big screen asks for: `wait`, `stick` (+ optional `meter`), `key` or
-`choices`. All message types live in `shared/protocol.ts`; phone input goes through `parseInput()` before a game sees it.
+join link `/ABCD`) show whatever controller the big screen asks for: `wait`, `stick` (+ optional `meter` and action
+`button`), `key`, `choices` or `keypad`. All message types live in `shared/protocol.ts`; phone input goes through `parseInput()` before a game sees it.
 
 ```
 app/
   pages/          index.vue (big screen), [code].vue (phone)
   components/     lobby, stage and controller pieces
   composables/    useGame.ts: the contract between the stage and a game
-  games/          index.ts (lobby cards), types.ts, one folder per game
+  games/          index.ts (lobby cards), types.ts, one folder per game,
+                  kit/ (shared helpers: random, teams, call signs, Phaser setup + player tokens)
   utils/          morseAudio.ts
 server/           WebSocket relay, rooms, QR code
 shared/           protocol.ts, morse.ts, choices.ts (big screen and phones)
@@ -84,7 +91,8 @@ import { useGame } from '~/composables/useGame';
 
 // ctx: { lang: 'en' | 'de', players, send(player, ui), end(scores) }
 const ctx = useGame({
-  input(player, msg) {}, // { t: 'stick', x, y } | { t: 'letter', c } | { t: 'sym', s } | { t: 'pick', i }
+  input(player, msg) {}, // { t: 'stick', x, y } | { t: 'button', down } | { t: 'letter', c } | { t: 'sym', s }
+                         // | { t: 'pick', i } | { t: 'code', code }
                          // | { t: 'presence' } when a player drops or comes back (player.online)
   join(player) {},       // someone joined mid-game
 });
@@ -95,4 +103,6 @@ onUnmounted(() => {}); // clear timers, destroy Phaser: ending a game unmounts t
 </script>
 ```
 
-Use Phaser 4 (`import * as Phaser from 'phaser'`) for anything that moves; a plain Vue template for quiz-style screens.
+Use Phaser 4 for anything that moves (`usePhaserGame()` and `addPlayerToken()` in `app/games/kit/phaser.ts`), a plain
+Vue template for quiz-style screens (`<GameScoreBoard>` for the side panel). Players are plain objects: key `Map`s by
+them. Give the component's root element its own class and `height: 100%`.

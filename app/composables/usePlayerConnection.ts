@@ -66,6 +66,8 @@ export function usePlayerConnection(room: string) {
   const id = tabId();
   const ui = shallowRef<PhoneUi>({ layout: 'wait', text: TXT[detectLang()].hello });
   const status = ref('');
+  /** Goes up on every (re)connect: the page keys its controller on it, so a pick lost in a blip can't leave the buttons locked. */
+  const epoch = ref(0);
   /** The big screen's language once we know it, else the browser's (for the phone's own texts and <html lang>). */
   const lang = computed(() => (isLang(ui.value.lang) ? ui.value.lang : detectLang()));
   const t = computed(() => TXT[lang.value]);
@@ -85,6 +87,7 @@ export function usePlayerConnection(room: string) {
     const socket = new WebSocket(`${proto}://${location.host}${WS_PATH}?role=player&room=${room}&id=${id}&name=${encodeURIComponent(name)}`);
     ws = socket;
     socket.onopen = () => {
+      epoch.value++;
       status.value = '';
       const { layout, text } = ui.value;
       if (layout === 'wait' && text === t.value.connecting) show({ layout: 'wait', text: t.value.in, sub: t.value.look });
@@ -121,5 +124,5 @@ export function usePlayerConnection(room: string) {
     ws.close();
   });
 
-  return { ui, status, lang, t, join, send };
+  return { ui, status, lang, t, join, send, epoch };
 }

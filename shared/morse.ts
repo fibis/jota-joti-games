@@ -10,6 +10,24 @@ export const DECODE: Readonly<Record<string, string>> = Object.fromEntries(Objec
 export const DAH_MS = 220;
 export const GAP_MS = 900;
 
+/**
+ * When the tones of `word` sound, in Morse units: dit 1, dah 3, 1 between symbols, 3 between letters.
+ * One schedule for the speaker and the signal lamp, so light and sound stay in step.
+ */
+export function morseTimeline(word: string) {
+  const tones: [start: number, length: number][] = [];
+  let t = 0;
+  for (const ch of word.toUpperCase()) {
+    for (const s of CODE[ch] ?? '') {
+      const len = s === '.' ? 1 : 3;
+      tones.push([t, len]);
+      t += len + 1;
+    }
+    t += 2;
+  }
+  return { tones, length: t };
+}
+
 /** `.-` → `·−`, for display. */
 export const prettyMorse = (s: string) => s.replace(/\./g, '·').replace(/-/g, '−');
 

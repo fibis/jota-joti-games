@@ -7,7 +7,7 @@ import { unlockAudio } from '~/utils/morseAudio';
 definePageMeta({ validate: route => ROOM_CODE.test(String(route.params.code).toUpperCase()) }); // short join link: /ABCD
 
 const room = String(useRoute().params.code).toUpperCase();
-const { ui, status, lang, t, join, send } = usePlayerConnection(room);
+const { ui, status, lang, t, join, send, epoch } = usePlayerConnection(room);
 
 useHead({
   title: 'JOTA-JOTI Controller',
@@ -17,8 +17,8 @@ useHead({
 });
 
 const name = ref<string>();
-// The host bumps `round` to force a fresh controller even when the layout stays the same.
-const controller = computed(() => `${ui.value.layout}:${ui.value.round}`);
+// The host bumps `round` to force a fresh controller even when the layout stays the same; a reconnect does too (epoch).
+const controller = computed(() => `${ui.value.layout}:${ui.value.round}:${epoch.value}`);
 
 function onJoin(playerName: string) {
   unlockAudio(); // unlock sound while we still have the user's tap
@@ -39,9 +39,11 @@ function onJoin(playerName: string) {
       <div class="sub">{{ ui.sub }}</div>
       <div class="ctl">
         <PlayerJoinForm v-if="!name" :placeholder="t.name" :button="t.join" @join="onJoin" />
-        <PlayerStickPad v-else-if="ui.layout === 'stick'" :key="controller" :send :hint="t.drag" :signal="t.signal" :meter="ui.meter" />
+        <PlayerStickPad v-else-if="ui.layout === 'stick'" :key="controller" :send :hint="t.drag" :signal="t.signal" :meter="ui.meter" :button="ui.button" />
         <PlayerTelegraphKey v-else-if="ui.layout === 'key'" :key="controller" :send :label="t.key" />
         <PlayerChoiceButtons v-else-if="ui.layout === 'choices'" :key="controller" :send :options="ui.options ?? []" />
+        <!-- no epoch here: a code typed while offline must survive the reconnect so ✓ can send it -->
+        <PlayerKeypadPad v-else-if="ui.layout === 'keypad'" :key="`keypad:${ui.round}`" :send :digits="ui.digits" />
       </div>
     </main>
   </div>
@@ -55,10 +57,12 @@ header { display: flex; align-items: center; gap: .5em; padding: .6em 1em; backg
 .av { font-size: 1.7em; line-height: 1; }
 .status { margin-left: auto; color: var(--muted); font-size: .8em; }
 main { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .8em; padding: 1em; text-align: center; }
-.text { font-size: 1.7em; font-weight: 800; letter-spacing: .02em; }
-.sub { color: var(--muted); min-height: 1.3em; white-space: pre-line; }
+/* pre-wrap keeps the games' line breaks and double spaces; they never shrink, the controller below does. */
+.text { font-size: 1.7em; font-weight: 800; letter-spacing: .02em; white-space: pre-wrap; flex-shrink: 0; }
+.sub { color: var(--muted); min-height: 1.3em; white-space: pre-wrap; flex-shrink: 0; }
 .ctl { flex: 1; width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .8em; position: relative; min-height: 0; }
 .ctl:empty { display: none; }
 .phone[data-layout=choices] .text { font-size: 1.25em; } /* the quiz question itself */
 .phone[data-layout=choices] main { justify-content: flex-start; }
+.phone[data-layout=keypad] .sub { color: var(--text); font-size: 1.15em; } /* the partner clue: the one thing to read */
 </style>

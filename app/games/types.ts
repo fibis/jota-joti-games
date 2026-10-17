@@ -25,8 +25,11 @@ export interface GameContext {
   readonly players: readonly Player[];
   /** Sets a player's phone controller. */
   send(player: Player, ui: ControllerUi): void;
-  /** Back to the lobby. Pass scores to show the ranking; nothing when aborted. */
-  end(scores?: Score[]): void;
+  /**
+   * Back to the lobby. Pass scores to show the ranking; nothing when aborted.
+   * `winners`: who gets "You won!" on their phone (a whole team); default: the top scorer.
+   */
+  end(scores?: Score[], winners?: readonly Player[]): void;
 }
 
 export interface GameHandlers {
@@ -48,12 +51,16 @@ export interface GameInfo {
   title: string;
   controller: string;
   description: string;
+  /** The intro before the game: three short lines, read out loud by the leader and shown on the phones. */
+  howTo: readonly [string, string, string];
 }
 
 export interface GameDefinition {
   id: string;
   emoji: string;
   info: Record<Lang, GameInfo>;
+  /** Keyboard players can't take part (e.g. typing codes): the intro leaves out the keyboard help. */
+  phonesOnly?: true;
   /** Lazy, so Phaser & co. only load when that game starts. */
   load: () => Promise<{ default: Component }>;
 }

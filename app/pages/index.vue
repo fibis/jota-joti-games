@@ -6,7 +6,9 @@ import { GAMES } from '~/games';
 import type { GameDefinition } from '~/games/types';
 
 const session = useHostSession();
-const { players, run, room, lang, t, lastRanked, startGame, endGame } = session;
+const { players, intro, run, room, lang, t, lastRanked, startGame, beginGame, endGame } = session;
+/** The game on stage: in its intro, or running. */
+const staged = computed(() => intro.value?.game ?? run.value?.game);
 useKeyboardPlayers(session);
 useHead({ title: 'JOTA-JOTI Games', htmlAttrs: { lang } });
 
@@ -30,7 +32,7 @@ function pick(game: GameDefinition) {
 
 <template>
   <div class="host">
-    <div v-show="!run" class="lobby">
+    <div v-show="!staged" class="lobby">
       <header>
         <h1>📻 JOTA-JOTI <span>{{ t.games }}</span></h1>
         <div class="room">{{ t.room }} <b>{{ room.code || '····' }}</b></div>
@@ -44,10 +46,9 @@ function pick(game: GameDefinition) {
             <HostPlayerChip v-for="p in list" :key="p.id" :player="p" />
             <span v-if="!list.length" class="muted">{{ t.waiting }}</span>
           </div>
-          <div class="muted">{{ t.keys.before }} <kbd>{{ t.keys.space }}</kbd> {{ t.keys.wasd }} <kbd>{{ t.keys.enter }}</kbd> {{ t.keys.arrows }}</div>
           <div v-if="lastRanked" class="results">
             <b>{{ t.last }}</b>
-            <span v-for="([p, s], i) in lastRanked" :key="p.id">{{ medal(i) }} {{ p.avatar }} {{ p.name }} <b>{{ s }}</b></span>
+            <span v-for="[p, s] in lastRanked" :key="p.id">{{ medal(lastRanked.findIndex(r => r[1] === s)) }} {{ p.avatar }} {{ p.name }} <b>{{ s }}</b></span>
           </div>
           <h2>{{ t.pick }}</h2>
           <div class="games">
@@ -56,7 +57,7 @@ function pick(game: GameDefinition) {
         </section>
       </div>
     </div>
-    <HostGameStage v-if="run" :key="run.id" :run="run" :join-url="room.url" :t="t" @exit="endGame()" />
+    <HostGameStage v-if="staged" :game="staged" :run="run" :lang="lang" :join-url="room.url" :t="t" @start="beginGame()" @exit="endGame()" />
     <div class="toast" :style="{ opacity: toast.shown ? 1 : 0 }">{{ toast.text }}</div>
   </div>
 </template>
@@ -65,17 +66,18 @@ function pick(game: GameDefinition) {
 /* Big-screen type and backdrop live here, not on html/body: the phone page has its own. */
 .host { height: 100%; font: 600 clamp(13px, min(1.45vw, 2.5vh), 40px)/1.35 system-ui, sans-serif; background: radial-gradient(ellipse at 50% -20%, #24503a, var(--bg) 60%, #08130e); background-color: var(--bg); }
 
-.lobby { height: 100%; overflow-y: auto; display: flex; flex-direction: column; padding: 1.4em 3vw; gap: 1.2em; } /* scrolls instead of clipping if a crowd still doesn't fit */
+.lobby { height: 100%; overflow-y: auto; display: flex; flex-direction: column; padding: 1.4em 3vw; gap: 1.2em; } /* last resort: a join panel too tall for a tiny screen */
 .lobby > header { display: flex; align-items: baseline; gap: 1em; }
 h1 { font-size: 2.6em; font-weight: 900; letter-spacing: -.02em; }
 h1 span { color: var(--fire); }
 .room { margin-left: auto; color: var(--muted); }
 .room b { color: var(--text); font: 900 1.6em ui-monospace, monospace; letter-spacing: .15em; }
-.grid { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2.1fr); gap: 3vw; }
-.right { display: flex; flex-direction: column; gap: 1em; min-height: 0; }
+.grid { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2.6fr); gap: 3vw; }
+/* A crowd that doesn't fit scrolls this column as a whole, so the QR code and room code stay in sight. */
+.right { display: flex; flex-direction: column; gap: .7em; min-height: 0; overflow-y: auto; padding-right: .4em; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
 h2 { font-size: 1.2em; color: var(--muted); text-transform: uppercase; letter-spacing: .1em; }
-.players { display: flex; flex-wrap: wrap; gap: .5em; min-height: 2.6em; }
-.games { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.2vw; }
+.players { flex: none; display: flex; flex-wrap: wrap; gap: .5em; min-height: 2.6em; } /* flex: none: scroll, don't squeeze chips over the next row */
+.games { display: grid; grid-template-columns: repeat(3, 1fr); gap: .8vw; }
 .results { background: linear-gradient(90deg, #3b2a0a, var(--panel)); border: 2px solid var(--fire); border-radius: 1em; padding: .7em 1em; display: flex; flex-wrap: wrap; gap: .4em 1.4em; align-items: center; }
-.toast { position: fixed; bottom: 2vw; left: 50%; transform: translateX(-50%); background: var(--fire); color: var(--bg); padding: .6em 1.2em; border-radius: .6em; font-weight: 800; transition: opacity .3s; }
+.toast { position: fixed; bottom: 2vw; left: 50%; transform: translateX(-50%); background: var(--fire); color: var(--bg); padding: .6em 1.2em; border-radius: .6em; font-weight: 800; transition: opacity .3s; pointer-events: none; } /* faded, it would still swallow clicks on the cards below */
 </style>

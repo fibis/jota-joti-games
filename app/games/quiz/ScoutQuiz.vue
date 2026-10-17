@@ -3,17 +3,15 @@
 import { CHOICES } from '#shared/choices';
 import { useGame } from '~/composables/useGame';
 import type { GameInput, Player } from '~/games/types';
+import { allOnlineDone, speedPoints } from '~/games/kit/rounds';
 import { COUNT, QUESTIONS } from './questions';
+import { shuffle } from '~/games/kit/random';
 
 const en = { q: 'Question', scores: 'SCORES', answered: 'answered', nobody: 'Nobody got it…', right: 'Correct!', wrong: '✗ Wrong', slow: '⏱ Too slow', answer: 'Answer:' };
 const de: typeof en = { q: 'Frage', scores: 'PUNKTE', answered: 'haben geantwortet', nobody: 'Keiner wusste es…', right: 'Richtig!', wrong: '✗ Falsch', slow: '⏱ Zu langsam', answer: 'Antwort:' };
 const TXT = { en, de };
 
 const Q_S = 20;
-
-function shuffle<T>(a: readonly T[]): T[] {
-  return a.map(v => [Math.random(), v] as const).sort((x, y) => x[0] - y[0]).map(x => x[1]);
-}
 
 interface Round {
   /** "Question 3 / 10" */
@@ -68,7 +66,7 @@ function reveal() {
   const answer = `${t.answer} ${CHOICES[r.correct]?.shape} ${r.options[r.correct]}`;
   for (const [p, total] of score) {
     const pk = picks.get(p), ok = pk?.i === r.correct;
-    const pts = ok ? 50 + Math.round(50 * Math.max(0, 1 - (pk.at - r.t0) / (Q_S * 1000))) : 0;
+    const pts = ok ? speedPoints((pk.at - r.t0) / 1000, Q_S) : 0;
     score.set(p, total + pts);
     ctx.send(p, { layout: 'wait', text: ok ? `✓ ${t.right} +${pts}` : pk ? t.wrong : t.slow, sub: `${r.text}\n${answer}`, buzz: ok ? 80 : 300 });
   }
@@ -78,8 +76,7 @@ function reveal() {
 function input(p: Player, d: GameInput) {
   if (!open.value || !score.has(p)) return;
   if (d.t === 'pick' && !picks.has(p)) picks.set(p, { i: d.i, at: Date.now() });
-  const live = [...score.keys()].filter(p => p.online); // a dropped phone isn't waited for; if all dropped, the timer runs
-  if (live.length && live.every(p => picks.has(p))) reveal();
+  if (allOnlineDone(score.keys(), pl => picks.has(pl))) reveal();
 }
 
 function join(p: Player) {

@@ -7,7 +7,11 @@ export default defineNuxtConfig({
   css: ['~/assets/css/main.css'],
   nitro: { experimental: { websocket: true } },
   // Pre-bundle Phaser so the dev server doesn't stop and reload the page the first time Fox Hunt starts.
-  vite: { optimizeDeps: { include: ['phaser'] } },
+  vite: {
+    optimizeDeps: { include: ['phaser'] },
+    // Phaser is one ~1.4 MB chunk, loaded only when a Phaser game starts.
+    build: { chunkSizeWarningLimit: 1500 },
+  },
   app: {
     head: {
       title: 'JOTA-JOTI Games',

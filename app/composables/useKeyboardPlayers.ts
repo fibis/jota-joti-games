@@ -10,8 +10,11 @@ const KEYBOARDS = [
   { id: 'kb-arrows', name: '↑←↓→ ⌨', join: 'Enter', up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight', act: 'Enter', picks: ['Digit7', 'Digit8', 'Digit9', 'Digit0'] },
 ];
 const ALL_KEYS = new Set(KEYBOARDS.flatMap(k => [k.up, k.down, k.left, k.right, k.act, ...k.picks]));
+const DIRS = new Set(KEYBOARDS.flatMap(k => [k.up, k.down, k.left, k.right]));
+/** The digit on each pick key per keyboard player ('kb-wasd' → '1234'), for answer chips on the big screen. */
+export const PICK_KEYS: Readonly<Record<string, string>> = Object.fromEntries(KEYBOARDS.map(k => [k.id, k.picks.map(c => c.slice(-1)).join('')]));
 
-export function useKeyboardPlayers({ players, run, join, toGame: send }: Pick<HostSession, 'players' | 'run' | 'join' | 'toGame'>) {
+export function useKeyboardPlayers({ players, intro, run, join, toGame: send }: Pick<HostSession, 'players' | 'intro' | 'run' | 'join' | 'toGame'>) {
   const held = new Set<string>();
   const toGame = (id: string, msg: PlayerInput) => {
     const p = players.get(id);
@@ -25,17 +28,17 @@ export function useKeyboardPlayers({ players, run, join, toGame: send }: Pick<Ho
   function key(e: KeyboardEvent, down: boolean) {
     if (!ALL_KEYS.has(e.code)) return;
     e.preventDefault();
-    if (e.repeat) return;
+    if (e.repeat && !DIRS.has(e.code)) return; // a held direction re-sends the stick, so a controller that just appeared picks it up
     if (down) held.add(e.code);
     else held.delete(e.code);
     // A release always silences, even when the game or layout changed while the key was held.
     if (!down && keyboards.some(k => k.act === e.code)) sidetone(false);
     for (const k of keyboards) {
       const p = players.get(k.id);
-      if (!run.value) { // lobby: the join key toggles this keyboard player
+      if (!run.value) { // lobby: the join key toggles this keyboard player; during a game's intro it only joins
         if (down && e.code === k.join) {
-          if (p) players.delete(k.id);
-          else join(k.id, k.name, true);
+          if (!p) join(k.id, k.name, true);
+          else if (!intro.value) players.delete(k.id);
         }
         continue;
       }
@@ -50,6 +53,7 @@ export function useKeyboardPlayers({ players, run, join, toGame: send }: Pick<Ho
         }
         toGame(k.id, { t: 'stick', x, y });
       }
+      if (layout === 'stick' && p.ui?.button && e.code === k.act) toGame(k.id, { t: 'button', down });
       if (layout === 'key' && e.code === k.act) {
         if (down) k.morse.down();
         else k.morse.up();

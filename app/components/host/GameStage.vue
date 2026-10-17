@@ -1,13 +1,13 @@
 <script setup lang="ts">
-// The running game, full screen, under a slim bar. The page keys this by run id, so every run mounts
-// fresh, and ending the run unmounts the game (which cleans up its timers/Phaser in onUnmounted).
-import { provideGameRun } from '~/composables/useGame';
+// The game on stage, full screen under a slim bar: first its intro, then the running game.
+// Every run mounts fresh (keyed by run id), and ending the run unmounts the game, which cleans up
+// its timers/Phaser in onUnmounted.
+import type { Lang } from '#shared/protocol';
 import type { HostText } from '~/composables/useHostSession';
-import type { GameRun } from '~/games/types';
+import type { GameDefinition, GameRun } from '~/games/types';
 
-const props = defineProps<{ run: GameRun; joinUrl: string; t: HostText }>();
-const emit = defineEmits<{ exit: [] }>();
-provideGameRun(props.run);
+defineProps<{ game: GameDefinition; run: GameRun | null; lang: Lang; joinUrl: string; t: HostText }>();
+const emit = defineEmits<{ start: []; exit: [] }>();
 
 // End game: two clicks so a stray click doesn't wipe a round. Esc ends right away.
 const armed = ref(false);
@@ -30,13 +30,14 @@ onUnmounted(() => {
 <template>
   <div class="stage">
     <div class="bar">
-      <span>{{ run.game.emoji }} {{ run.game.info[run.ctx.lang].title }}</span>
+      <span>{{ game.emoji }} {{ game.info[run?.ctx.lang ?? lang].title }}</span>
       <span class="join-at muted">{{ t.joinAt }} {{ joinUrl }}</span>
       <button class="exit" :class="{ sure: armed }" title="Esc" @click="exitClick">{{ armed ? t.sure : t.end }}</button>
     </div>
     <!-- Games fill this with height: 100%; position: relative + min-height: 0 let Phaser's FIT scaling measure it. -->
     <div class="inner">
-      <component :is="run.component" />
+      <HostGameRun v-if="run" :key="run.id" :run="run" />
+      <HostGameIntro v-else :emoji="game.emoji" :info="game.info[lang]" :kb="!game.phonesOnly" :t="t" @start="emit('start')" />
     </div>
   </div>
 </template>

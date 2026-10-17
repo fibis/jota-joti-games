@@ -5,6 +5,7 @@ import type { ControllerUi, Lang } from '#shared/protocol';
 import { useGame } from '~/composables/useGame';
 import type { GameInput, Player } from '~/games/types';
 import { playMorse } from '~/utils/morseAudio';
+import { allOnlineDone } from '~/games/kit/rounds';
 import { PLAN, WORDS } from './words';
 
 const en = {
@@ -33,7 +34,6 @@ const TXT: Record<Lang, typeof en> = { en, de };
 
 const ROUND_S = 60, HINT_ROUNDS = 3, POINTS = [5, 4, 3], LATE = 2;
 const morse = (c: string) => prettyMorse(CODE[c] ?? '');
-const SHEET = Object.keys(CODE).filter(c => c > '9').map(c => [c, morse(c)] as const); // A-Z, no digits
 
 /** One player's progress on the current word. */
 interface KeyState {
@@ -115,9 +115,7 @@ function input(p: Player, d: GameInput) {
     }
     sendKey(p, s.bad ? { buzz: 150 } : s.done ? { buzz: [80, 60, 80] } : {});
   }
-  // Checked on every input, `presence` included, so a drop can end the round.
-  const live = [...st].filter(([pl]) => pl.online); // a dropped phone isn't waited for; if all dropped, the timer runs
-  if (live.length && live.every(([, ks]) => ks.done)) endRound();
+  if (allOnlineDone(st.keys(), pl => !!st.get(pl)?.done)) endRound();
 }
 
 function join(p: Player) {
@@ -156,9 +154,7 @@ onUnmounted(() => {
         <span class="sc">{{ score.get(p) }}</span>
       </div>
     </div>
-    <div class="sheet">
-      <span v-for="[c, m] in SHEET" :key="c"><b>{{ c }}</b>{{ m }}</span>
-    </div>
+    <GameMorseSheet />
   </div>
 </template>
 
@@ -177,7 +173,4 @@ onUnmounted(() => {
 .mm .prog i.on { color: var(--good); border-color: var(--good); }
 .mm .sym { font: 800 1.2em ui-monospace, monospace; color: var(--fire); }
 .mm .sc { margin-left: auto; font-weight: 900; font-size: 1.2em; }
-.mm .sheet { display: grid; grid-template-columns: repeat(13, 1fr); gap: .3em; font: 600 .95em ui-monospace, monospace; }
-.mm .sheet span { background: var(--panel); border-radius: .3em; padding: .15em .4em; display: flex; justify-content: space-between; }
-.mm .sheet b { color: var(--fire); }
 </style>

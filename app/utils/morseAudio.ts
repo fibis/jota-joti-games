@@ -1,5 +1,5 @@
 // Sidetone for the key, and playback of whole words. One shared AudioContext (browsers need a user tap first).
-import { CODE } from '#shared/morse';
+import { morseTimeline } from '#shared/morse';
 
 let ctx: AudioContext | undefined;
 export const audioContext = () => (ctx ??= new AudioContext());
@@ -24,23 +24,24 @@ export function sidetone(on: boolean, freq = 700) {
   }
 }
 
-/** Plays `word` in Morse; returns how long that takes in seconds. */
-export function playMorse(word: string, { unit = 0.09, freq = 650, vol = 0.2 } = {}) {
+/** playMorse() starts the first tone this many seconds after the call (sync a lamp to it). */
+export const MORSE_LEAD_S = 0.1;
+
+/** Plays `word` in Morse; returns how long that takes in seconds. Aborting `signal` silences it at once. */
+export function playMorse(word: string, { unit = 0.09, freq = 650, vol = 0.2, signal }: { unit?: number; freq?: number; vol?: number; signal?: AbortSignal } = {}) {
   const a = audioContext();
   const g = new GainNode(a, { gain: 0 });
   g.connect(a.destination);
-  let t = a.currentTime + 0.1;
-  for (const ch of word.toUpperCase()) {
-    for (const s of CODE[ch] ?? '') {
-      const o = new OscillatorNode(a, { frequency: freq });
-      o.connect(g);
-      g.gain.setValueAtTime(vol, t);
-      o.start(t);
-      o.stop((t += unit * (s === '.' ? 1 : 3)));
-      g.gain.setValueAtTime(0, t);
-      t += unit;
-    }
-    t += unit * 2;
+  signal?.addEventListener('abort', () => g.disconnect(), { once: true });
+  const start = a.currentTime + MORSE_LEAD_S;
+  const { tones, length } = morseTimeline(word);
+  for (const [at, len] of tones) {
+    const o = new OscillatorNode(a, { frequency: freq });
+    o.connect(g);
+    g.gain.setValueAtTime(vol, start + at * unit);
+    o.start(start + at * unit);
+    o.stop(start + (at + len) * unit);
+    g.gain.setValueAtTime(0, start + (at + len) * unit);
   }
-  return t - a.currentTime;
+  return MORSE_LEAD_S + length * unit;
 }

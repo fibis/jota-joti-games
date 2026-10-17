@@ -1,5 +1,6 @@
 <script setup lang="ts">
 // Where phones join: the server's QR code, the short link, and the Wi-Fi hint unless phones come in over a public tunnel.
+// Below it, how to play without a phone (the panel has room to spare; the game cards don't).
 import type { HostText } from '~/composables/useHostSession';
 
 defineProps<{ qr: string; url: string; tunnel: boolean; t: HostText }>();
@@ -11,6 +12,7 @@ defineProps<{ qr: string; url: string; tunnel: boolean; t: HostText }>();
     <div class="qr" v-html="qr" />
     <div>{{ t.scan }}<br>{{ t.open }} <span class="url">{{ url || '…' }}</span></div>
     <div class="muted">{{ tunnel ? '' : t.wifi }}</div>
+    <div class="muted keys">{{ t.keys.before }} <kbd>{{ t.keys.space }}</kbd> {{ t.keys.wasd }} <kbd>{{ t.keys.enter }}</kbd> {{ t.keys.arrows }}</div>
   </section>
 </template>
 
@@ -18,5 +20,6 @@ defineProps<{ qr: string; url: string; tunnel: boolean; t: HostText }>();
 .join { background: var(--panel); border-radius: 1.2em; padding: 1.5vw; display: flex; flex-direction: column; align-items: center; text-align: center; gap: .6em; border: 2px solid var(--line); }
 .qr { width: 100%; max-width: 22vw; aspect-ratio: 1; background: #fff; border-radius: .6em; padding: .5em; }
 .qr :deep(svg) { width: 100%; height: 100%; display: block; }
-.url { font: .8em ui-monospace, monospace; color: var(--fire); overflow-wrap: anywhere; }
+.url { font: 1em ui-monospace, monospace; color: var(--fire); overflow-wrap: anywhere; }
+.keys { font-size: .8em; }
 </style>
