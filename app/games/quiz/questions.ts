@@ -1,6 +1,12 @@
-// Scout Quiz: Kahoot-style. Big screen shows the question, phones show it too, with 4 coloured buttons.
-// Each question: [category, question, correct answer, wrong, wrong, wrong]. Correct is shuffled at runtime.
-export const QUESTIONS = {
+// Scout Quiz questions. Each question: [category, question, correct answer, wrong, wrong, wrong]. Correct is shuffled at runtime.
+import type { Lang } from '#shared/protocol';
+
+/** Questions per game. */
+export const COUNT = 10;
+
+export type Question = readonly [category: string, text: string, correct: string, wrong1: string, wrong2: string, wrong3: string];
+
+export const QUESTIONS: Record<Lang, readonly Question[]> = {
   en: [
     ['📻', 'Radio alphabet: which word stands for S?', 'Sierra', 'Sugar', 'Samba', 'Sunny'],
     ['📻', 'Radio alphabet: which word stands for J?', 'Juliett', 'Jungle', 'Jupiter', 'Jamboree'],
@@ -76,106 +82,3 @@ export const QUESTIONS = {
     ['🌍', '„Leave No Trace“ heißt…', 'Die Natur so verlassen, wie man sie vorgefunden hat', 'Rückwärts gehen, um Spuren zu verwischen', 'Den Lagerplatz nie verlassen', 'Allen Müll verbrennen'],
   ],
 };
-const TXT = {
-  en: { q: 'Question', scores: 'SCORES', answered: 'answered', nobody: 'Nobody got it…', right: 'Correct!', wrong: '✗ Wrong', slow: '⏱ Too slow', answer: 'Answer:' },
-  de: { q: 'Frage', scores: 'PUNKTE', answered: 'haben geantwortet', nobody: 'Keiner wusste es…', right: 'Richtig!', wrong: '✗ Falsch', slow: '⏱ Zu langsam', answer: 'Antwort:' },
-};
-const COUNT = 10, Q_S = 20;
-const SHAPES = ['▲', '◆', '●', '■'], COLORS = ['#d4213d', '#1368ce', '#c98a00', '#26890c'];
-const shuffle = a => a.map(v => [Math.random(), v]).sort((x, y) => x[0] - y[0]).map(x => x[1]);
-
-export function start(api) {
-  const t = TXT[api.lang] ?? TXT.en;
-  const score = new Map(api.players.map(p => [p, 0]));
-  const picks = new Map(); // player -> { i, at }
-  const qs = shuffle(QUESTIONS[api.lang] ?? QUESTIONS.en).slice(0, COUNT);
-  let n = -1, q, options, correct, t0, open = false, tick, next;
-
-  api.stage.innerHTML = `<style>
-    .qz { height: 100%; display: grid; grid-template-columns: 1fr 18em; gap: 2vw; padding: 2vw 3vw; }
-    .qz main { display: flex; flex-direction: column; gap: 1.5vw; min-height: 0; }
-    .qz .top { display: flex; justify-content: space-between; color: var(--muted); font-size: 1.2em; }
-    .qz .bar { height: .6em; border-radius: .3em; background: var(--panel); overflow: hidden; }
-    .qz .bar div { height: 100%; background: var(--fire); transition: width 1s linear; }
-    .qz h2 { font-size: 2.6em; text-transform: none; letter-spacing: 0; color: var(--text); text-align: center; flex: 1; display: grid; place-items: center; }
-    .qz .opts { display: grid; grid-template-columns: 1fr 1fr; gap: 1vw; }
-    .qz .opt { display: flex; align-items: center; gap: .6em; padding: .8em 1em; border-radius: .6em; font-size: 1.6em; font-weight: 800; color: #fff; transition: opacity .3s, transform .3s; }
-    .qz .opt b { font-size: 1.2em; }
-    .qz .opt.dim { opacity: .2; } .qz .opt.win { transform: scale(1.03); outline: .2em solid #fff; }
-    .qz .who { min-height: 2.2em; font-size: 1.4em; display: flex; flex-wrap: wrap; gap: .3em; }
-    .qz aside { background: var(--panel); border-radius: 1em; padding: 1em; display: flex; flex-direction: column; gap: .4em; overflow: hidden; }
-    .qz aside div { display: flex; gap: .5em; } .qz aside span:last-child { margin-left: auto; font-weight: 900; }
-  </style>
-  <div class="qz">
-    <main>
-      <div class="top"><span class="num"></span><span class="cat"></span></div>
-      <div class="bar"><div></div></div>
-      <h2></h2>
-      <div class="opts"></div>
-      <div class="who"></div>
-    </main>
-    <aside></aside>
-  </div>`;
-  const $ = s => api.stage.querySelector(s);
-
-  function ask() {
-    if (++n >= qs.length) return api.end([...score]);
-    const [cat, text, ...answers] = qs[n];
-    q = text;
-    options = shuffle(answers);
-    correct = options.indexOf(answers[0]);
-    picks.clear();
-    open = true;
-    t0 = Date.now();
-    $('.num').textContent = `${t.q} ${n + 1} / ${qs.length}`;
-    $('.cat').textContent = cat;
-    $('h2').textContent = text;
-    $('.opts').innerHTML = options.map((o, i) => `<div class="opt" style="background:${COLORS[i]}"><b>${SHAPES[i]}</b><span>${api.esc(o)}</span></div>`).join('');
-    $('.who').textContent = '';
-    const bar = $('.bar div');
-    bar.style.transition = 'none'; bar.style.width = '100%'; bar.offsetWidth; // restart the countdown bar
-    bar.style.transition = `width ${Q_S}s linear`; bar.style.width = '0%';
-    for (const p of score.keys()) sendQ(p);
-    board();
-    tick = setTimeout(reveal, Q_S * 1000);
-  }
-  // round: t0 is unique across games, so a reconnecting phone never keeps an old game's buttons.
-  const sendQ = p => api.send(p, { layout: 'choices', round: t0, options, text: q, sub: `${t.q} ${n + 1} / ${qs.length}` });
-
-  function reveal() {
-    open = false;
-    clearTimeout(tick);
-    [...$('.opts').children].forEach((el, i) => el.classList.add(i === correct ? 'win' : 'dim'));
-    for (const p of score.keys()) {
-      const pk = picks.get(p), ok = pk?.i === correct;
-      const pts = ok ? 50 + Math.round(50 * Math.max(0, 1 - (pk.at - t0) / (Q_S * 1000))) : 0;
-      score.set(p, score.get(p) + pts);
-      api.send(p, { layout: 'wait', text: ok ? `✓ ${t.right} +${pts}` : pk ? t.wrong : t.slow, sub: `${q}\n${t.answer} ${SHAPES[correct]} ${options[correct]}`, buzz: ok ? 80 : 300 });
-    }
-    $('.who').innerHTML = [...picks].filter(([, pk]) => pk.i === correct).map(([p]) => `<span title="${api.esc(p.name)}">${p.avatar}</span>`).join('') || `<span class="muted">${t.nobody}</span>`;
-    board();
-    next = setTimeout(ask, 5000);
-  }
-
-  function board() {
-    $('aside').innerHTML = `<b class="muted">${t.scores}</b>` + [...score].sort((a, b) => b[1] - a[1])
-      .map(([p, s]) => `<div><span>${p.avatar}</span><span>${api.esc(p.name)}</span><span>${s}</span></div>`).join('');
-  }
-
-  next = setTimeout(ask, 300);
-
-  return {
-    input(p, d) {
-      if (!open || !score.has(p)) return;
-      const i = Number(d.i);
-      if (d.t === 'pick' && !picks.has(p) && i >= 0 && i < 4) {
-        picks.set(p, { i, at: Date.now() });
-        $('.who').innerHTML = [...picks.keys()].map(p => `<span>${p.avatar}</span>`).join('') + ` <span class="muted">${t.answered}</span>`;
-      }
-      const live = [...score.keys()].filter(p => p.online); // a dropped phone isn't waited for; if all dropped, the timer runs
-      if (live.length && live.every(p => picks.has(p))) reveal();
-    },
-    join(p) { score.set(p, 0); if (open) sendQ(p); board(); },
-    stop() { clearTimeout(tick); clearTimeout(next); open = false; n = qs.length; },
-  };
-}

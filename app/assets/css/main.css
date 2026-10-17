@@ -1,0 +1,11 @@
+/* Design tokens and base styles shared by the big screen and the phones. */
+:root {
+  --bg: #10231a; --panel: #1b3a2a; --line: #2c5640; --text: #f4efe6; --muted: #9fb5a6;
+  --fire: #ff9f1c; --good: #3ddc84; --bad: #ff5a5f;
+}
+* { box-sizing: border-box; }
+html, body, #__nuxt { margin: 0; height: 100%; }
+body { color: var(--text); background: var(--bg); overflow: hidden; }
+h1, h2 { margin: 0; }
+.muted { color: var(--muted); }
+kbd { font: 700 .85em ui-monospace, monospace; padding: .05em .4em; border-radius: .3em; background: var(--panel); border: 1px solid var(--line); border-bottom-width: 3px; }
