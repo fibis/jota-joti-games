@@ -1,83 +1,22 @@
 <script setup lang="ts">
-// The big screen: lobby with QR code, scouts and game cards. A running game takes over the whole screen.
-import { medal, useHostSession } from '~/composables/useHostSession';
-import { useKeyboardPlayers } from '~/composables/useKeyboardPlayers';
-import { GAMES } from '~/games';
-import type { GameDefinition } from '~/games/types';
+// The site's entry. A laptop or beamer becomes the big screen; a phone gets the way into a game instead,
+// so it doesn't open a lobby (and a room nobody can join) by accident.
 
-const session = useHostSession();
-const { players, intro, run, room, lang, t, lastRanked, removePlayer, startGame, beginGame, endGame } = session;
-/** The game on stage: in its intro, or running. */
-const staged = computed(() => intro.value?.game ?? run.value?.game);
-useKeyboardPlayers(session);
-useHead({ title: 'JOTA-JOTI Games', htmlAttrs: { lang } });
-
-const list = computed(() => [...players.values()]);
-const online = computed(() => list.value.filter(p => p.online).length);
-
-const toast = ref({ text: '', shown: false });
-let toastTimer: ReturnType<typeof setTimeout> | undefined;
-function showToast(text: string) {
-  toast.value = { text, shown: true };
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => (toast.value.shown = false), 2500);
+/** Touch screen with a short side like a phone. A tablet can still choose to be the big screen. */
+const looksLikePhone = () => matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) < 820;
+/** This tab has been a big screen before (it holds a room): stay one after a reload. */
+function wasBigScreen() {
+  try {
+    return !!sessionStorage.getItem('jjRoom');
+  } catch {
+    return false;
+  }
 }
-onUnmounted(() => clearTimeout(toastTimer));
 
-function pick(game: GameDefinition) {
-  if (!players.size) return showToast(t.value.first);
-  void startGame(game);
-}
+const bigScreen = ref(!looksLikePhone() || wasBigScreen());
 </script>
 
 <template>
-  <div class="host">
-    <div v-show="!staged" class="lobby">
-      <header>
-        <h1>📻 JOTA-JOTI <span>{{ t.games }}</span></h1>
-        <div class="room">{{ t.room }} <b>{{ room.code || '····' }}</b></div>
-        <HostLangSwitch v-model="lang" />
-      </header>
-      <div class="grid">
-        <HostJoinPanel :qr="room.qr" :url="room.url" :tunnel="room.tunnel" :t="t" />
-        <section class="right">
-          <h2>{{ t.scouts }} {{ list.length ? `(${online})` : '' }}</h2>
-          <div class="players">
-            <HostPlayerChip v-for="p in list" :key="p.id" :player="p" :hint="t.remove" @remove="removePlayer(p)" />
-            <span v-if="!list.length" class="muted">{{ t.waiting }}</span>
-          </div>
-          <div v-if="lastRanked" class="results">
-            <b>{{ t.last }}</b>
-            <span v-for="[p, s] in lastRanked" :key="p.id">{{ medal(lastRanked.findIndex(r => r[1] === s)) }} {{ p.avatar }} {{ p.name }} <b>{{ s }}</b></span>
-          </div>
-          <h2>{{ t.pick }}</h2>
-          <div class="games">
-            <HostGameCard v-for="g in GAMES" :key="g.id" :emoji="g.emoji" :info="g.info[lang]" @click="pick(g)" />
-          </div>
-        </section>
-      </div>
-    </div>
-    <HostGameStage v-if="staged" :game="staged" :run="run" :lang="lang" :join-url="room.url" :t="t" @start="beginGame()" @exit="endGame()" />
-    <div class="toast" :style="{ opacity: toast.shown ? 1 : 0 }">{{ toast.text }}</div>
-  </div>
+  <HostBigScreen v-if="bigScreen" />
+  <PlayerJoinRoom v-else @host="bigScreen = true" />
 </template>
-
-<style scoped>
-/* Big-screen type and backdrop live here, not on html/body: the phone page has its own. */
-.host { height: 100%; font: 600 clamp(13px, min(1.45vw, 2.5vh), 40px)/1.35 system-ui, sans-serif; background: radial-gradient(ellipse at 50% -20%, #24503a, var(--bg) 60%, #08130e); background-color: var(--bg); }
-
-.lobby { height: 100%; overflow-y: auto; display: flex; flex-direction: column; padding: 1.4em 3vw; gap: 1.2em; } /* last resort: a join panel too tall for a tiny screen */
-.lobby > header { display: flex; align-items: baseline; gap: 1em; }
-h1 { font-size: 2.6em; font-weight: 900; letter-spacing: -.02em; }
-h1 span { color: var(--fire); }
-.room { margin-left: auto; color: var(--muted); }
-.room b { color: var(--text); font: 900 1.6em ui-monospace, monospace; letter-spacing: .15em; }
-.grid { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2.6fr); gap: 3vw; }
-/* A crowd that doesn't fit scrolls this column as a whole, so the QR code and room code stay in sight. */
-.right { display: flex; flex-direction: column; gap: .7em; min-height: 0; overflow-y: auto; padding-right: .4em; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
-h2 { font-size: 1.2em; color: var(--muted); text-transform: uppercase; letter-spacing: .1em; }
-.players { flex: none; display: flex; flex-wrap: wrap; gap: .5em; min-height: 2.6em; } /* flex: none: scroll, don't squeeze chips over the next row */
-.games { display: grid; grid-template-columns: repeat(3, 1fr); gap: .8vw; }
-.results { background: linear-gradient(90deg, #3b2a0a, var(--panel)); border: 2px solid var(--fire); border-radius: 1em; padding: .7em 1em; display: flex; flex-wrap: wrap; gap: .4em 1.4em; align-items: center; }
-.toast { position: fixed; bottom: 2vw; left: 50%; transform: translateX(-50%); background: var(--fire); color: var(--bg); padding: .6em 1.2em; border-radius: .6em; font-weight: 800; transition: opacity .3s; pointer-events: none; } /* faded, it would still swallow clicks on the cards below */
-</style>

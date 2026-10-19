@@ -25,7 +25,8 @@ const en = {
   signal: '📡 Signal',
   key: 'KEY',
   nohost: 'No big screen with code',
-  check: 'Check the code on the big screen',
+  check: 'Check the code on the big screen. The games need one: open this website on a laptop or beamer first.',
+  other: 'Enter another code',
   otherTab: 'Opened in another tab',
   thisTab: 'Keep playing there, or reload this page',
   removed: 'Removed by the big screen',
@@ -43,7 +44,8 @@ const de: typeof en = {
   signal: '📡 Signal',
   key: 'TASTE',
   nohost: 'Kein großer Bildschirm mit Code',
-  check: 'Prüf den Code auf dem großen Bildschirm',
+  check: 'Prüf den Code auf dem großen Bildschirm. Ohne den geht’s nicht: Öffne die Website zuerst auf einem Laptop oder Beamer.',
+  other: 'Anderen Code eingeben',
   otherTab: 'In einem anderen Tab geöffnet',
   thisTab: 'Spiel dort weiter oder lade diese Seite neu',
   removed: 'Vom großen Bildschirm entfernt',
@@ -52,7 +54,10 @@ const de: typeof en = {
 const TXT: Record<Lang, typeof en> = { en, de };
 
 /** The big screen's view, or one of our own screens (those keep its language, your avatar and colour). */
-export type PhoneUi = ControllerUi & Partial<Pick<PlayerView, 'avatar' | 'color' | 'lang'>>;
+export type PhoneUi = ControllerUi & Partial<Pick<PlayerView, 'avatar' | 'color' | 'lang'>> & {
+  /** Our own screen: no big screen has this room code (yet). */
+  nohost?: true;
+};
 
 /** Per tab: survives reloads, two tabs = two players. */
 function tabId() {
@@ -116,7 +121,7 @@ export function usePlayerConnection(room: string) {
     };
     socket.onmessage = (e: MessageEvent<string>) => {
       const d = JSON.parse(e.data) as ServerToPlayer; // relayed from the big screen, which runs the game
-      show('nohost' in d ? { layout: 'wait', text: `${t.value.nohost} ${room}`, sub: t.value.check } : d);
+      show('nohost' in d ? { layout: 'wait', text: `${t.value.nohost} ${room}`, sub: t.value.check, nohost: true } : d);
     };
     socket.onclose = (e) => {
       if (e.code === CLOSE_REPLACED) return show({ layout: 'wait', text: t.value.otherTab, sub: t.value.thisTab }); // same player id connected elsewhere

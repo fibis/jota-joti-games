@@ -38,6 +38,8 @@ onUnmounted(() => window.removeEventListener('pointerdown', unlockAudio));
     <main>
       <div class="text">{{ ui.text }}</div>
       <div class="sub">{{ ui.sub }}</div>
+      <!-- `/` on a phone is the code entry: wrong code, try another one (the socket keeps waiting for a big screen meanwhile) -->
+      <NuxtLink v-if="ui.nohost" class="other" to="/">{{ t.other }}</NuxtLink>
       <div class="ctl">
         <PlayerJoinForm v-if="!name" :placeholder="t.name" :button="t.join" @join="onJoin" />
         <PlayerStickPad v-else-if="ui.layout === 'stick'" :key="controller" :send :hint="t.drag" :signal="t.signal" :meter="ui.meter" :button="ui.button" />
@@ -65,5 +67,6 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; align-item
 .ctl:empty { display: none; }
 .phone[data-layout=choices] .text { font-size: 1.25em; } /* the quiz question itself */
 .phone[data-layout=choices] main { justify-content: flex-start; }
+.other { color: var(--fire); font-weight: 800; }
 .phone[data-layout=keypad] .sub { color: var(--text); font-size: 1.15em; } /* the partner clue: the one thing to read */
 </style>
