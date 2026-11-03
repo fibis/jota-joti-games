@@ -34,15 +34,16 @@ because phones that look it up too early can get stuck on "not found" for minute
 - Expect roughly 100 ms extra delay; Morse timing happens on the phone, so only Fox Hunt steering notices.
 - A quick tunnel allows 200 open connections, so roughly 190 phones max. Keep the laptop awake: the tunnel dies with it.
 
-### Hosted on bunny.net Magic Containers
+### Hosted on Dokploy
 
 Live at https://games.jota-joti.online. Every push to `main` runs the tests and the type check, then builds
-`ghcr.io/fibis/jota-joti-games:<sha>` and rolls it out to the Magic Containers app `jota-joti-games`
-(`.github/workflows/docker.yml`; repo variable `APP_ID`, secret `BUNNYNET_API_KEY`).
+`ghcr.io/fibis/jota-joti-games:latest` (and `:<sha>`) and redeploys it through a Dokploy webhook
+(`.github/workflows/docker.yml`; repo secret `DOKPLOY_WEBHOOK_URL`). The compose service has `pull_policy: always`,
+so a redeploy picks up the new image.
 Locally: `docker build -t jota-joti-games . && docker run -p 3000:3000 jota-joti-games`.
 
-The app runs **one instance in one region (DE)** on purpose: rooms live in memory, so the big screen and the phones
-must all reach the same container. Env `PUBLIC_URL` sets the address in the QR code; WebSockets are on in the pull zone.
+The app runs **one instance** on purpose: rooms live in memory, so the big screen and the phones
+must all reach the same container. Env `PUBLIC_URL` sets the address in the QR code.
 
 **EN / DE** switch in the lobby (defaults to the browser language); phones follow the big screen.
 **✕ End game** in the bar above every game (click twice), or Esc.
